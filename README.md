@@ -156,6 +156,8 @@ Keys inside the strip: wheel / arrows / `j` `k` / PgUp PgDn / space · `g` top �
 | `controlroom status` | one-shot text of the board (what the strip shows) |
 | `controlroom statusbar` | the live strip (pager) |
 | `controlroom detail` / `detail-on` / `detail-off` | toggle the detail view (flag in `~/.config/controlroom/`) |
+| `controlroom retire <agent> [reason]` | close a worker's tab; its pi session stays on disk and the board records `pi --resume <session>` |
+| `controlroom gc [--hours 24] [--apply] [--keep a,b]` | list (dry run) or retire workers idle longer than N hours; never touches the controller or working/blocked agents |
 
 Useful Herdr commands from any pane: `herdr agent list` · `herdr agent read <name> --source recent-unwrapped --lines 60` (peek) · `herdr agent prompt <name> "…"` (redirect a warm worker) · `herdr agent focus <name>` (jump to its tab) · `Ctrl+B Z` zoom/unzoom a pane.
 
@@ -170,7 +172,8 @@ Useful Herdr commands from any pane: `herdr agent list` · `herdr agent read <na
 5. **Reuse warm workers** for follow-ups; start cold only for new areas.
 6. **Pipelines log markers and run under `caffeinate`.** No marker, no status.
 7. **Only `blocked` needs you.** Everything else the controller integrates when you say "ok".
-8. **The human still closes the loop.** Pi cannot start a turn on its own; the strip and the toasts get *your* attention, then you poke the controller.
+8. **Retire idle workers after ~24 h** (`controlroom gc --apply`). Idle pis cost no tokens but do cost memory and attention; a retired worker's session is resumable, so nothing is lost.
+9. **The human still closes the loop.** Pi cannot start a turn on its own; the strip and the toasts get *your* attention, then you poke the controller.
 
 ## Gotchas we hit (so you don't)
 

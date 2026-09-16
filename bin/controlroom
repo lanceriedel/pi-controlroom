@@ -8,6 +8,8 @@
 #   controlroom watch-log <file> <lbl> toast + log when a pipeline log shows END/DONE/rc=
 #   controlroom launch <name> <brief> [tab-label]   new tab → pi → prompt with brief → watcher
 #   controlroom status                 one-shot text status (what the strip shows)
+#   controlroom retire <agent> [why]   close a worker's tab (session stays resumable), log it on the board
+#   controlroom gc [--hours 24] [--apply] [--keep a,b]   list/retire workers idle longer than N hours
 set -u
 CMD=${1:-help}; shift || true
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -151,5 +153,38 @@ except Exception: print("timeout")')
   watch-log)
     f=$1; label=$2; until grep -qE 'END|DONE|rc=[0-9]' "$f" 2>/dev/null; do sleep 60; done
     note "pipeline: $label finished" "$(tail -1 "$f")" ;;
+  retire)   # controlroom retire <agent> [reason]  — close the worker's tab; session file stays resumable
+    NAME=$1; REASON=${2:-retired}
+    AGENTS_JSON=$(herdr agent list 2>/dev/null) NAME="$NAME" python3 - <<'PY' > /tmp/.cr_retire
+import json,os
+ags=json.loads(os.environ["AGENTS_JSON"])["result"]["agents"]; n=os.environ["NAME"]
+a=next((x for x in ags if (x.get("name")==n or x["pane_id"]==n)),None)
+print(f"{a['tab_id']} {a.get('agent_session',{}).get('value','')}" if a else "")
+PY
+    read -r TAB SESS < /tmp/.cr_retire; [ -z "$TAB" ] && { echo "no agent $NAME"; exit 1; }
+    herdr tab close "$TAB" >/dev/null 2>&1 && echo "retired $NAME ($TAB) — resume: pi --resume $SESS"
+    note "retired $NAME" "$REASON · resume: $SESS" none
+    [ -f "$ROOT/docs/briefs/STATUS.md" ] && ! grep -q '^## Retired' "$ROOT/docs/briefs/STATUS.md" && printf '\n## Retired workers (tab closed; session resumable)\n| agent | when | reason | resume |\n|---|---|---|---|\n' >> "$ROOT/docs/briefs/STATUS.md"
+    [ -f "$ROOT/docs/briefs/STATUS.md" ] && printf '| %s | %s | %s | `pi --resume %s` |\n' "$NAME" "$(date '+%m-%d %H:%M')" "$REASON" "$SESS" >> "$ROOT/docs/briefs/STATUS.md" ;;
+  gc)       # controlroom gc [--hours 24] [--apply] [--keep a,b]  — list (or retire) workers idle longer than N hours
+    HOURS=24; APPLY=0; KEEP=""
+    while [ $# -gt 0 ]; do case "$1" in --hours) HOURS=$2; shift 2;; --apply) APPLY=1; shift;; --keep) KEEP=$2; shift 2;; *) shift;; esac; done
+    AGENTS_JSON=$(herdr agent list 2>/dev/null) WS="$WS" HOURS="$HOURS" KEEP="$KEEP" python3 - <<'PY' > /tmp/.cr_gc
+import json,os,time
+ags=json.loads(os.environ["AGENTS_JSON"])["result"]["agents"]; ws=os.environ.get("WS"); h=float(os.environ["HOURS"]); keep=set(filter(None,os.environ["KEEP"].split(",")))
+for a in ags:
+    if ws and a.get("workspace_id")!=ws: continue
+    n=a.get("name") or a["pane_id"]
+    if n=="controller" or n in keep or a["agent_status"] in ("working","blocked"): continue
+    p=a.get("agent_session",{}).get("value"); 
+    if not p or not os.path.exists(p): continue
+    age=(time.time()-os.path.getmtime(p))/3600
+    if age>=h: print(f"{n} {age:.1f}")
+PY
+    if [ ! -s /tmp/.cr_gc ]; then echo "gc: nothing idle > ${HOURS}h"; exit 0; fi
+    while read -r n age; do
+      if [ "$APPLY" = 1 ]; then "$0" retire "$n" "gc: idle ${age}h"; else echo "would retire $n (idle ${age}h)"; fi
+    done < /tmp/.cr_gc
+    [ "$APPLY" = 1 ] || echo "(dry run — add --apply)" ;;
   *) sed -n 2,12p "$0" ;;
 esac
