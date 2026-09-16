@@ -110,19 +110,19 @@ A line in `logs/agents.log` written by a **watcher** when something happens: a w
  AGENTS  (detail on — Ctrl+B D to toggle)
    working  controller         w9:p1
    working  concepts           w9:pV   013 — collections → concepts (L4), shared-concept edges …
-            → $ bq query --use_legacy_sql=false < notebooks/sql/concepts/05_validate.sql
+            → $ python3 scripts/concepts/validate.py --window 365d
    done     baselines          w9:p9   C3 — fashion v2 baselines
    idle     plan-critic        w9:pA   D-plan-critique
-   blocked  bento-integration  w9:pH   H2 — bento branch                       ← needs you
+   blocked  ui-integration     w9:pH   H2 — demo UI branch                     ← needs you
  PIPELINES  (last 10 by time · running=yellow · no-marker=no START/END lines in the log)
    running   scenes                 1.9h ago  START 014_communities 2026-09-16T14:18:40Z
    done      platform_edges         2.8h ago  [07:23:29] RESULTS written docs/briefs/results/012-…
    FAILED    curation_edges         1.4d ago  QUERY FAILED
  EVENTS (logs/agents.log)
    [09-16 07:23] worker platform-edges: done — results in docs/briefs/results/ — say ok in CONTROLLER
-   [09-16 07:29] worker edge-service: done — …
- WAITING ON LANCE
-   4. Internal-demo label policy: name shops with ≥30 products, or keep hashed?
+   [09-16 07:29] worker edge-service: done — results in docs/briefs/results/ — say ok in CONTROLLER
+ WAITING ON YOU
+   4. Label policy for the internal demo: show names for entities above the k-floor, or keep hashed?
  BRIEFS   010-load-curation-layer 011-purchase-mode-no-crawl 012-platform-wide-edges 013-… 014-…
 ```
 
@@ -139,7 +139,7 @@ With **detail on** (`d` in the strip, or `Ctrl+B D`), each agent also shows its 
 
 **PIPELINES** — the last 10 `logs/*.log` by modification time, freshest first, each with a status derived from its marker lines: `running` (last marker is START and the file changed in the last 3 h), `done` (END / DONE / `rc=0`), `FAILED` (`rc≠0`, FAIL, Traceback), `stale?` (START but quiet for 3 h — probably died), `no-marker` (a log with no START/END lines, so status is unknown).
 
-**EVENTS** — the last five watcher events. **WAITING ON LANCE** — open items from the board's decisions list. **BRIEFS** — everything in `docs/briefs/`.
+**EVENTS** — the last five watcher events. **WAITING ON YOU** — open items from the board's decisions list (set `CONTROLROOM_HUMAN=<name>` to personalise the heading). **BRIEFS** — everything in `docs/briefs/`.
 
 Keys inside the strip: wheel / arrows / `j` `k` / PgUp PgDn / space · `g` top · `G` bottom · `r` refresh now · `d` toggle detail · `q` quit (`controlroom statusbar` brings it back).
 

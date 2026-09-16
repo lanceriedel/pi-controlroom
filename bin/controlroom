@@ -16,6 +16,7 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 LOG="$ROOT/logs/agents.log"; mkdir -p "$ROOT/logs" "$HOME/.config/controlroom"
 DETAIL_FLAG="$HOME/.config/controlroom/detail.${HERDR_WORKSPACE_ID:-default}"
 WS=${HERDR_WORKSPACE_ID:-}
+HUMAN=${CONTROLROOM_HUMAN:-YOU}   # name shown in "WAITING ON …"; set CONTROLROOM_HUMAN=Lance in your shell if you like
 
 note(){ echo "[$(date '+%m-%d %H:%M')] $1 — $2" >> "$LOG"; herdr notification show "$1" --body "$2" --sound "${3:-done}" --position top-right >/dev/null 2>&1; }
 need_herdr(){ [ "${HERDR_ENV:-}" = 1 ] || { echo "not inside a Herdr pane (HERDR_ENV!=1)"; exit 1; }; }
@@ -85,7 +86,7 @@ if not rows: print("   (none)")
 PY
   printf ' EVENTS (logs/agents.log)\n'; [ -f "$LOG" ] && tail -5 "$LOG" | sed 's/^/   /' | cut -c1-140
   if [ -f "$ROOT/docs/briefs/STATUS.md" ]; then
-    printf ' WAITING ON LANCE\n'
+    printf ' WAITING ON %s\n' "$(echo "$HUMAN" | tr a-z A-Z)"
     awk '/^## Decisions waiting/{f=1;next} /^## /{f=0} f && /^[0-9]+\./ && !/~~/' "$ROOT/docs/briefs/STATUS.md" | cut -c1-140 | sed 's/^/   /'
     printf ' BRIEFS   %s\n' "$(ls "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -v -E 'README|STATUS' | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' | tr '\n' ' ')"
   fi
@@ -111,7 +112,7 @@ case "$CMD" in
 | pane | agent | brief | state | result |
 |---|---|---|---|---|
 
-## Decisions waiting on Lance
+## Decisions waiting on the human
 1.
 
 ## How to use the agents
