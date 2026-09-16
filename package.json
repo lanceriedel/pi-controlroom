@@ -1,0 +1,11 @@
+{
+  "name": "pi-controlroom",
+  "version": "0.1.0",
+  "description": "A control room for pi + Herdr: one controller pi that briefs, launches and integrates worker pis, with a live status strip, watchers and a file-based briefs/results protocol.",
+  "keywords": ["pi-package", "herdr", "agents", "orchestration"],
+  "license": "MIT",
+  "pi": {
+    "prompts": ["./prompts"],
+    "skills": ["./skills"]
+  }
+}

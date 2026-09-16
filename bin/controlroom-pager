@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Control-room status pager.
+- Renders `controlroom status` output (ANSI colors) in a scrollable curses view.
+- Refreshes in the background, but only after >= IDLE seconds without user input.
+- Keeps your scroll position across refreshes (clamped to the new length).
+Keys: wheel / up / down / j / k / PgUp / PgDn / space / g / G · r = refresh now · d = toggle detail · q or ctrl+c = quit
+"""
+import curses, os, re, subprocess, sys, threading, time
+
+IDLE = 15.0          # seconds of no input before a refresh is allowed
+PERIOD = 15.0        # regenerate at most this often
+ANSI = re.compile(r"\x1b\[([0-9;]*)m")
+
+def generate():
+    try:
+        out = subprocess.run(["controlroom", "status"], capture_output=True, text=True, timeout=40).stdout
+    except Exception as e:
+        out = f" status generation failed: {e}\n"
+    return out.splitlines()
+
+def parse(line):
+    """ANSI line -> [(text, attr_key)] where attr_key in {'', 'bold','yellow','green','greenb','red','cyan','grey'}"""
+    segs, pos, cur = [], 0, ""
+    for m in ANSI.finditer(line):
+        if m.start() > pos: segs.append((line[pos:m.start()], cur))
+        codes = [c for c in m.group(1).split(";") if c]
+        if not codes or "0" in codes: cur = ""
+        for c in codes:
+            cur = {"1": "bold", "33": "yellow", "32": "green", "31": "red", "36": "cyan", "90": "grey"}.get(c, cur)
+        if "32" in codes and "1" in codes: cur = "greenb"
+        if "31" in codes and "1" in codes: cur = "red"
+        pos = m.end()
+    if pos < len(line): segs.append((line[pos:], cur))
+    return segs
+
+def main(stdscr):
+    curses.curs_set(0); curses.use_default_colors(); stdscr.timeout(200)
+    curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION); print("\033[?1003h", end="", flush=True)
+    pairs = {}
+    for i, (k, col) in enumerate([("yellow", curses.COLOR_YELLOW), ("green", curses.COLOR_GREEN), ("greenb", curses.COLOR_GREEN),
+                                  ("red", curses.COLOR_RED), ("cyan", curses.COLOR_CYAN), ("grey", 8)], start=1):
+        try: curses.init_pair(i, col, -1); pairs[k] = curses.color_pair(i) | (curses.A_BOLD if k in ("greenb", "red") else 0)
+        except Exception: pairs[k] = 0
+    pairs[""] = 0; pairs["bold"] = curses.A_BOLD
+    state = {"lines": generate(), "offset": 0, "last_input": 0.0, "last_gen": time.time(), "stamp": time.strftime("%H:%M:%S"), "quit": False, "force": False}
+    lock = threading.Lock()
+
+    def refresher():
+        while not state["quit"]:
+            time.sleep(1)
+            now = time.time()
+            due = state["force"] or (now - state["last_gen"] >= PERIOD and now - state["last_input"] >= IDLE)
+            if due:
+                lines = generate()
+                with lock:
+                    state["lines"] = lines; state["last_gen"] = time.time(); state["stamp"] = time.strftime("%H:%M:%S"); state["force"] = False
+    threading.Thread(target=refresher, daemon=True).start()
+
+    while not state["quit"]:
+        h, w = stdscr.getmaxyx()
+        with lock:
+            lines = state["lines"]; off = max(0, min(state["offset"], max(0, len(lines) - (h - 1)))); state["offset"] = off; stamp = state["stamp"]
+        stdscr.erase()
+        for row, line in enumerate(lines[off:off + h - 1]):
+            x = 0
+            for text, key in parse(line):
+                if x >= w - 1: break
+                try: stdscr.addnstr(row, x, text, w - 1 - x, pairs.get(key, 0))
+                except curses.error: pass
+                x += len(text)
+        idle_left = max(0, int(IDLE - (time.time() - state["last_input"]))) if time.time() - state["last_input"] < IDLE else 0
+        foot = f" {off + 1}-{min(len(lines), off + h - 1)}/{len(lines)} · refreshed {stamp}" + (f" · paused while you read ({idle_left}s)" if idle_left else " · auto-refresh 15s") + " · r refresh · d detail · q quit"
+        try: stdscr.addnstr(h - 1, 0, foot.ljust(w - 1), w - 1, curses.A_REVERSE)
+        except curses.error: pass
+        stdscr.refresh()
+        ch = stdscr.getch()
+        if ch == -1: continue
+        state["last_input"] = time.time()
+        if ch in (ord("q"), 3): state["quit"] = True
+        elif ch in (curses.KEY_DOWN, ord("j")): state["offset"] += 1
+        elif ch in (curses.KEY_UP, ord("k")): state["offset"] -= 1
+        elif ch in (curses.KEY_NPAGE, ord(" ")): state["offset"] += h - 2
+        elif ch == curses.KEY_PPAGE: state["offset"] -= h - 2
+        elif ch == ord("g"): state["offset"] = 0
+        elif ch == ord("G"): state["offset"] = 10**9
+        elif ch == ord("r"): state["force"] = True
+        elif ch == ord("d"): subprocess.run(["controlroom", "detail"], capture_output=True); state["force"] = True
+        elif ch == curses.KEY_MOUSE:
+            try:
+                _, _, _, _, b = curses.getmouse()
+                if b & (curses.BUTTON4_PRESSED): state["offset"] -= 3
+                elif b & (getattr(curses, "BUTTON5_PRESSED", 0) or (1 << 21)): state["offset"] += 3
+            except curses.error: pass
+        elif ch == curses.KEY_RESIZE: pass
+        state["offset"] = max(0, state["offset"])
+    print("\033[?1003l", end="", flush=True)
+
+if __name__ == "__main__":
+    try: curses.wrapper(main)
+    except KeyboardInterrupt: pass

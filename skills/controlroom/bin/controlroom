@@ -1,0 +1,155 @@
+#!/bin/bash
+# controlroom — turn the current Herdr pane's pi into a "controller" with a status strip and watchers.
+# Works in any project. Requires HERDR_ENV=1 (run from inside a Herdr-managed pane).
+#
+#   controlroom init [--rows N]        rename agent→controller, tab→CONTROLLER, add status strip, scaffold docs/briefs
+#   controlroom statusbar              (internal) the refreshing status strip
+#   controlroom watch <agent>...       toast + logs/agents.log when agents finish/block
+#   controlroom watch-log <file> <lbl> toast + log when a pipeline log shows END/DONE/rc=
+#   controlroom launch <name> <brief> [tab-label]   new tab → pi → prompt with brief → watcher
+#   controlroom status                 one-shot text status (what the strip shows)
+set -u
+CMD=${1:-help}; shift || true
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+LOG="$ROOT/logs/agents.log"; mkdir -p "$ROOT/logs" "$HOME/.config/controlroom"
+DETAIL_FLAG="$HOME/.config/controlroom/detail.${HERDR_WORKSPACE_ID:-default}"
+WS=${HERDR_WORKSPACE_ID:-}
+
+note(){ echo "[$(date '+%m-%d %H:%M')] $1 — $2" >> "$LOG"; herdr notification show "$1" --body "$2" --sound "${3:-done}" --position top-right >/dev/null 2>&1; }
+need_herdr(){ [ "${HERDR_ENV:-}" = 1 ] || { echo "not inside a Herdr pane (HERDR_ENV!=1)"; exit 1; }; }
+
+status_text(){
+  printf '\033[1m CONTROL ROOM  %s  %s\033[0m   (say "ok" in CONTROLLER to integrate · \033[31;1mblocked\033[0m = needs you)\n' "$(date '+%a %H:%M')" "$(basename "$ROOT")"
+  DETAIL=0; [ -f "$DETAIL_FLAG" ] && DETAIL=1
+  AGENTS_JSON=$(herdr agent list 2>/dev/null) WS="$WS" DETAIL="$DETAIL" ROOT="$ROOT" python3 - <<'PY'
+import json,sys,os,re,subprocess
+try: ags=json.loads(os.environ.get("AGENTS_JSON","{}"))["result"]["agents"]
+except Exception: ags=[]
+ws=os.environ.get("WS"); detail=os.environ.get("DETAIL")=="1"; root=os.environ.get("ROOT")
+col={"working":"\033[33m","idle":"\033[32m","done":"\033[32;1m","blocked":"\033[31;1m","unknown":"\033[90m"}
+# task per agent from the board (STATUS.md workers table: | pane | agent | brief | state | result |)
+tasks={}
+try:
+    for line in open(os.path.join(root,"docs/briefs/STATUS.md")):
+        cells=[c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells)>=3 and cells[1] and cells[1] not in ("agent","---"): tasks[cells[1]]=cells[2]
+except Exception: pass
+def lastline(name):
+    try:
+        t=subprocess.run(["herdr","agent","read",name,"--source","visible","--lines","50","--format","text"],capture_output=True,text=True,timeout=3).stdout
+        lines=[l.rstrip() for l in t.splitlines() if l.strip() and not set(l.strip())<=set("─═-│┌┐└┘ ")]
+        cmds=[l.strip() for l in lines if re.match(r"^\s*\$ ", l)]
+        if cmds: return "$ "+re.sub(r"^\$\s*","",cmds[-1])[:140]
+        for l in reversed(lines):
+            if re.search(r"claude|anthropic|\(auto\)|^~/|ctrl\+o|Working ─", l): continue
+            return l.strip()[:140]
+    except Exception: pass
+    return ""
+print(" AGENTS" + ("  (detail on — Ctrl+B D to toggle)" if detail else "  (Ctrl+B D for detail)"))
+for a in ags:
+    if ws and a.get("workspace_id")!=ws: continue
+    n=a.get("name") or a["pane_id"]; st=a["agent_status"]
+    print(f"   {col.get(st,'')}{st:<8}\033[0m {n:<18} {a['pane_id']}" + (f"   \033[90m{tasks.get(n,'')[:90]}\033[0m" if detail and tasks.get(n) else ""))
+    if detail and st=="working":
+        ll=lastline(n)
+        if ll: print(f"            \033[36m→ {ll}\033[0m")
+PY
+  printf ' PIPELINES  (last 10 by time · running=yellow · no-marker=no START/END lines in the log%s)\n' "$([ "$DETAIL" = 1 ] && echo ' · detail: show all')"
+  ROOT="$ROOT" DETAIL="$DETAIL" python3 - <<'PY'
+import os,re,time,glob
+root=os.environ["ROOT"]; detail=os.environ.get("DETAIL")=="1"; now=time.time()
+def age(t):
+    d=now-t
+    return f"{int(d//60)}m" if d<3600 else (f"{d/3600:.1f}h" if d<86400 else f"{d/86400:.1f}d")
+rows=[]
+for f in sorted(glob.glob(os.path.join(root,"logs","*.log"))):
+    name=os.path.basename(f)[:-4]
+    if name=="agents": continue
+    try: lines=[l.rstrip() for l in open(f,errors="replace") if l.strip()]
+    except Exception: continue
+    mt=os.path.getmtime(f); last=lines[-1] if lines else ""
+    marks=[l for l in lines if re.search(r"\bSTART\b|\bEND\b|\bDONE\b|rc=|FAIL|Traceback|PIPELINE",l)]
+    lm=marks[-1] if marks else ""
+    if re.search(r"rc=[1-9]|\bFAIL(ED)?\b|Traceback",lm): st,col="FAILED","\033[31;1m"
+    elif re.search(r"\bEND\b|\bDONE\b|rc=0",lm): st,col="done","\033[32m"
+    elif re.search(r"START",lm): st,col=("running","\033[33m") if now-mt<3*3600 else ("stale?","\033[90m")
+    else: st,col="no-marker","\033[90m"
+    rows.append((mt,st,col,name,age(mt),(lm or last)[:80]))
+rows.sort(key=lambda r:-r[0])
+if not detail: rows=rows[:10]
+for mt,st,col,name,a,txt in rows:
+    print(f"   {col}{st:<9}\033[0m {name:<20} {a:>5} ago  {txt}")
+if not rows: print("   (none)")
+PY
+  printf ' EVENTS (logs/agents.log)\n'; [ -f "$LOG" ] && tail -5 "$LOG" | sed 's/^/   /' | cut -c1-140
+  if [ -f "$ROOT/docs/briefs/STATUS.md" ]; then
+    printf ' WAITING ON LANCE\n'
+    awk '/^## Decisions waiting/{f=1;next} /^## /{f=0} f && /^[0-9]+\./ && !/~~/' "$ROOT/docs/briefs/STATUS.md" | cut -c1-140 | sed 's/^/   /'
+    printf ' BRIEFS   %s\n' "$(ls "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -v -E 'README|STATUS' | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' | tr '\n' ' ')"
+  fi
+}
+
+case "$CMD" in
+  status) status_text ;;
+  detail) if [ -f "$DETAIL_FLAG" ]; then rm -f "$DETAIL_FLAG"; echo "detail: off"; else touch "$DETAIL_FLAG"; echo "detail: on"; fi ;;
+  detail-on) touch "$DETAIL_FLAG" ;;
+  detail-off) rm -f "$DETAIL_FLAG" ;;
+  statusbar)   # curses pager: keeps your scroll position, refreshes only after 15 s of no input. q/ctrl+c quits.
+    exec controlroom-pager ;;
+  init)
+    need_herdr; ROWS=9; [ "${1:-}" = "--rows" ] && ROWS=${2:-9}
+    herdr agent rename "$HERDR_PANE_ID" controller >/dev/null 2>&1 && echo "agent → controller"
+    herdr tab rename "$HERDR_TAB_ID" "CONTROLLER" >/dev/null 2>&1 && echo "tab → CONTROLLER"
+    mkdir -p "$ROOT/docs/briefs/results"
+    [ -f "$ROOT/docs/briefs/STATUS.md" ] || cat > "$ROOT/docs/briefs/STATUS.md" <<EOF
+# STATUS — control room board ($(basename "$ROOT"))
+**Where to go:** Herdr workspace \`$WS\` → tab **CONTROLLER** (agent \`controller\`). Talk to it; it briefs, launches, integrates.
+
+## Workers
+| pane | agent | brief | state | result |
+|---|---|---|---|---|
+
+## Decisions waiting on Lance
+1.
+
+## How to use the agents
+\`herdr agent list\` · \`herdr agent read <name> --source recent-unwrapped --lines 60\` · \`herdr agent prompt <name> "…"\` · \`herdr agent focus <name>\`
+Only **blocked** needs a human. New work → \`docs/briefs/<X>.md\` (objective · inputs · constraints · deliverable · where to write) → ask controller to launch.
+Results land in \`docs/briefs/results/\`; chat is ephemeral, files are the memory.
+EOF
+    # status strip: split down, then shrink the new pane to ROWS
+    pane=$(herdr pane split --current --direction down --ratio 0.5 --cwd "$ROOT" --no-focus 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
+    sleep 2; herdr pane rename "$pane" status >/dev/null 2>&1
+    total=$(herdr pane layout --pane "$HERDR_PANE_ID" 2>/dev/null | python3 -c 'import json,sys; l=json.load(sys.stdin)["result"]["layout"]; print(l["area"]["height"])')
+    frac=$(python3 -c "print(max(0.05, min(0.5, 1 - ($ROWS+1)/$total)))")
+    herdr pane resize --pane "$pane" --direction down --amount "$frac" >/dev/null 2>&1
+    herdr pane run "$pane" "controlroom statusbar" >/dev/null 2>&1 && echo "status strip → pane $pane ($ROWS rows)"
+    echo "board  → $ROOT/docs/briefs/STATUS.md"; echo "done. next: controlroom launch <name> docs/briefs/<X>.md"
+    ;;
+  launch)
+    need_herdr; NAME=$1; BRIEF=$2; LABEL=${3:-"worker: $NAME"}
+    pane=$(herdr tab create --workspace "$WS" --cwd "$ROOT" --no-focus 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])'); sleep 3
+    herdr tab rename "${pane/:p/:t}" "$LABEL" >/dev/null 2>&1
+    herdr agent start "$NAME" --kind pi --pane "$pane" --timeout 60000 >/dev/null 2>&1 || { echo "agent start failed in $pane"; exit 1; }
+    sleep 2
+    herdr agent prompt "$NAME" "Read $BRIEF and execute it end to end. Work autonomously; do not ask questions unless truly blocked. Save deliverables where the brief specifies and write the final summary to docs/briefs/results/ as the brief says. Save partial results early and often. When done, reply with the single line: DONE $NAME" >/dev/null 2>&1
+    nohup "$0" watch "$NAME" >/dev/null 2>&1 &
+    note "launched $NAME" "$BRIEF in $pane" none; echo "$NAME → $pane ($LABEL), watcher armed"
+    ;;
+  watch)
+    for a in "$@"; do (
+      sleep 90   # grace period: ignore the pre-prompt idle right after launch
+      while true; do
+        st=$(herdr agent wait "$a" --until done --until blocked --until idle --timeout 3600000 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin)["result"]["agent"]["agent_status"])
+except Exception: print("timeout")')
+        case "$st" in
+          done|idle) note "worker $a: $st" "results in docs/briefs/results/ — say ok in CONTROLLER" done; exit 0;;
+          blocked)   note "worker $a NEEDS YOU" "herdr agent focus $a" request; exit 0;;
+        esac
+      done ) & done; wait ;;
+  watch-log)
+    f=$1; label=$2; until grep -qE 'END|DONE|rc=[0-9]' "$f" 2>/dev/null; do sleep 60; done
+    note "pipeline: $label finished" "$(tail -1 "$f")" ;;
+  *) sed -n 2,12p "$0" ;;
+esac
