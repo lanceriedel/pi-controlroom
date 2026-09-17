@@ -37,6 +37,7 @@ command = "controlroom detail"
 - **Board**: `docs/briefs/STATUS.md` — workers table, decisions waiting on the human. Update on every launch/integration.
 - **Pipelines** (long deterministic jobs): own Herdr tab, `logs/<name>.log` with `START` / `END … rc=<n>` markers, wrapped in `caffeinate -i` on macOS; scratch logs in `logs/scratch/`.
 - Decisions serial (one question to the human), execution parallel. Reuse warm idle workers via `herdr agent prompt <name>`. Only **blocked** needs a human.
+- **Time-box local compute in briefs** (e.g. `timeout 600 …` / a `--max-seconds` flag). A worker once blocked 26 h on one graph-algorithm call at 98% CPU: no writes, no progress, no alarm — the status strip showed `working`. Prefer pruned inputs + a bounded first pass + partial outputs.
 - Hidden pi subagents die after ~3 min without output — use Herdr panes for read-heavy tasks.
 - End each check-in with a one-line reminder of where the controller is and how to use agents.
 

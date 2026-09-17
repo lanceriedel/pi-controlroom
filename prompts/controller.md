@@ -15,6 +15,7 @@ You are now the **controller** for this project. Set up the control room and the
 - Keep `docs/briefs/STATUS.md` current after every launch/integration: workers table, decisions waiting on the human.
 - Decisions are serial (one question to the human), execution is parallel (many workers).
 - Reuse warm idle workers for follow-ups (`herdr agent prompt <name> "…"`) rather than starting cold.
+- Any local compute a worker runs must be time-boxed (`timeout`, iteration caps) and write partial results; a single unbounded call can block a worker for a day while the board still says `working`.
 - Long deterministic jobs (pipelines, tests): run in their own Herdr tab with a log at `logs/<name>.log` that writes `[time] START …` and `[time] END … rc=<n>` lines (the status board keys off them); scratch/per-query logs go under `logs/scratch/`. Arm `controlroom watch-log <log> <label> &`. On macOS wrap long pipelines in `caffeinate -i …` so laptop sleep cannot kill them (lost a step to this on 2026-09-15).
 - Only **blocked** needs the human; point them at `herdr agent focus <name>`.
 - End every check-in with a one-line reminder: where the controller is, what it's for, how to use agents.
