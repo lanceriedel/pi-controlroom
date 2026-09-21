@@ -156,7 +156,7 @@ except Exception: print("timeout")')
     f=$1; label=$2; until grep -qE 'END|DONE|rc=[0-9]' "$f" 2>/dev/null; do sleep 60; done
     note "pipeline: $label finished" "$(tail -1 "$f")" ;;
   retire)   # controlroom retire <agent> [reason]  — close the worker's tab; session file stays resumable
-    NAME=$1; REASON=${2:-retired}
+    NAME=${1:-}; REASON=${2:-retired}; [ -z "$NAME" ] && { echo "usage: controlroom retire <agent|pane> [reason]"; exit 2; }
     AGENTS_JSON=$(herdr agent list 2>/dev/null) NAME="$NAME" python3 - <<'PY' > /tmp/.cr_retire
 import json,os
 ags=json.loads(os.environ["AGENTS_JSON"])["result"]["agents"]; n=os.environ["NAME"]
