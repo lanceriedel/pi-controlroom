@@ -130,7 +130,8 @@ EOF
     echo "board  → $ROOT/docs/briefs/STATUS.md"; echo "done. next: controlroom launch <name> docs/briefs/<X>.md"
     ;;
   launch)
-    need_herdr; NAME=$1; BRIEF=$2; LABEL=${3:-"worker: $NAME"}
+    need_herdr; NAME=${1:-}; BRIEF=${2:-}; LABEL=${3:-"worker: $NAME"}
+    [ -z "$NAME" ] || [ -z "$BRIEF" ] && { echo "usage: controlroom launch <name> docs/briefs/<NNN-slug>.md [tab label]"; exit 2; }
     pane=$(herdr tab create --workspace "$WS" --cwd "$ROOT" --no-focus 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])'); sleep 3
     herdr tab rename "${pane/:p/:t}" "$LABEL" >/dev/null 2>&1
     herdr agent start "$NAME" --kind pi --pane "$pane" --timeout 60000 >/dev/null 2>&1 || { echo "agent start failed in $pane"; exit 1; }
