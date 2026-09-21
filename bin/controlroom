@@ -19,17 +19,28 @@ WS=${HERDR_WORKSPACE_ID:-}
 HUMAN=${CONTROLROOM_HUMAN:-YOU}   # name shown in "WAITING ON …"; set CONTROLROOM_HUMAN=Lance in your shell if you like
 
 note(){ echo "[$(date '+%m-%d %H:%M')] $1 — $2" >> "$LOG"; herdr notification show "$1" --body "$2" --sound "${3:-done}" --position top-right >/dev/null 2>&1; }
+# verify <agent> → prints done | crashed | stalled. herdr's "done/idle" only means the prompt stopped;
+# a worker is done when its pane shows the "DONE <name>" line; crashed when the tail shows a proxy/API error.
+verify(){
+  herdr agent read "$1" --source visible --lines 200 --format text 2>/dev/null | NAME="$1" python3 -c '
+import sys,re,os
+t=sys.stdin.read(); name=os.environ["NAME"]; tail="\n".join(t.splitlines()[-40:])
+if re.search(r"daily premium model limit|BadRequestError|RateLimitError|\"error\":\{|Error: [45]\d\d|overloaded_error|ECONNREFUSED", tail): print("crashed")
+elif re.search(r"^\s*DONE\s+(%s|\d{3})\b" % re.escape(name), t, re.M): print("done")
+else: print("stalled")'
+}
+
 need_herdr(){ [ "${HERDR_ENV:-}" = 1 ] || { echo "not inside a Herdr pane (HERDR_ENV!=1)"; exit 1; }; }
 
 status_text(){
   printf '\033[1m CONTROL ROOM  %s  %s\033[0m   (say "ok" in CONTROLLER to integrate · \033[31;1mblocked\033[0m = needs you)\n' "$(date '+%a %H:%M')" "$(basename "$ROOT")"
   DETAIL=0; [ -f "$DETAIL_FLAG" ] && DETAIL=1
-  AGENTS_JSON=$(herdr agent list 2>/dev/null) WS="$WS" DETAIL="$DETAIL" ROOT="$ROOT" python3 - <<'PY'
+  AGENTS_JSON=$(herdr agent list 2>/dev/null) WS="$WS" DETAIL="$DETAIL" ROOT="$ROOT" SELF="$0" python3 - <<'PY'
 import json,sys,os,re,subprocess
 try: ags=json.loads(os.environ.get("AGENTS_JSON","{}"))["result"]["agents"]
 except Exception: ags=[]
 ws=os.environ.get("WS"); detail=os.environ.get("DETAIL")=="1"; root=os.environ.get("ROOT")
-col={"working":"\033[33m","idle":"\033[32m","done":"\033[32;1m","blocked":"\033[31;1m","unknown":"\033[90m"}
+col={"working":"\033[33m","idle":"\033[32m","done":"\033[32;1m","blocked":"\033[31;1m","crashed":"\033[31;1m","stalled":"\033[35m","unknown":"\033[90m"}
 # task per agent from the board (STATUS.md workers table: | pane | agent | brief | state | result |)
 tasks={}
 try:
@@ -52,6 +63,11 @@ print(" AGENTS" + ("  (detail on — Ctrl+B D to toggle)" if detail else "  (Ctr
 for a in ags:
     if ws and a.get("workspace_id")!=ws: continue
     n=a.get("name") or a["pane_id"]; st=a["agent_status"]
+    if st in ("done","idle") and a.get("name"):
+        try:
+            v=subprocess.run(["bash","-c",f'source "{os.environ.get("SELF","")}" __lib__ 2>/dev/null; verify "{n}"'],capture_output=True,text=True,timeout=4).stdout.strip()
+        except Exception: v=""
+        st={"done":"done","crashed":"crashed","stalled":"stalled"}.get(v, st)
     print(f"   {col.get(st,'')}{st:<8}\033[0m {n:<18} {a['pane_id']}" + (f"   \033[90m{tasks.get(n,'')[:90]}\033[0m" if detail and tasks.get(n) else ""))
     if detail and st=="working":
         ll=lastline(n)
@@ -93,6 +109,8 @@ PY
 }
 
 case "$CMD" in
+  __lib__) return 0 2>/dev/null || exit 0 ;;   # sourced for verify()
+  verify) verify "$1" ;;
   status) status_text ;;
   detail) if [ -f "$DETAIL_FLAG" ]; then rm -f "$DETAIL_FLAG"; echo "detail: off"; else touch "$DETAIL_FLAG"; echo "detail: on"; fi ;;
   detail-on) touch "$DETAIL_FLAG" ;;
@@ -148,10 +166,21 @@ EOF
 try: print(json.load(sys.stdin)["result"]["agent"]["agent_status"])
 except Exception: print("timeout")')
         case "$st" in
-          done|idle) note "worker $a: $st" "results in docs/briefs/results/ — say ok in CONTROLLER" done; exit 0;;
+          done|idle)
+            v=$(verify "$a")
+            case "$v" in
+              done)    note "worker $a: DONE" "results in docs/briefs/results/ — say ok in CONTROLLER" done; exit 0;;
+              crashed) note "worker $a CRASHED (API/proxy error)" "fix cause, then: controlroom resume $a" request; exit 0;;
+              *)       note "worker $a stopped WITHOUT DONE" "check pane; controlroom resume $a to continue" request; exit 0;;
+            esac;;
           blocked)   note "worker $a NEEDS YOU" "herdr agent focus $a" request; exit 0;;
         esac
       done ) & done; wait ;;
+  resume)   # controlroom resume <agent> [extra instruction] — re-prompt a stopped worker and re-arm the watcher
+    need_herdr; NAME=${1:-}; EXTRA=${2:-}; [ -z "$NAME" ] && { echo "usage: controlroom resume <agent> [note]"; exit 2; }
+    herdr agent prompt "$NAME" "Resume exactly where you stopped (your previous call failed or was cut off). Check your persisted files and logs first; do not redo finished steps. Every number in your results file must come from your own outputs; if a step did not complete, say so plainly instead of estimating. Finish the brief and reply with the single line: DONE $NAME. $EXTRA" >/dev/null 2>&1
+    nohup "$0" watch "$NAME" >/dev/null 2>&1 &
+    note "resumed $NAME" "watcher re-armed" none; echo "$NAME resumed, watcher armed" ;;
   watch-log)
     f=$1; label=$2; until grep -qE 'END|DONE|rc=[0-9]' "$f" 2>/dev/null; do sleep 60; done
     note "pipeline: $label finished" "$(tail -1 "$f")" ;;

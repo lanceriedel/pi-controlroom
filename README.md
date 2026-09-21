@@ -196,3 +196,9 @@ bin/controlroom-pager        the status strip (python3, curses)
 ```
 
 MIT © Lance Riedel
+
+### Completion is verified, not assumed (v0.1.5)
+Herdr's `done`/`idle` only means the prompt stopped. `controlroom` now reads the worker's pane and reports:
+`done` (the `DONE <name>` line is present) · `crashed` (proxy/API error in the tail — e.g. the daily premium spend cap) ·
+`stalled` (stopped without DONE). `controlroom verify <agent>` prints it; the watcher notifies accordingly;
+`controlroom resume <agent> [note]` re-prompts a stopped worker and re-arms the watcher.
