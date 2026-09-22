@@ -19,9 +19,14 @@ WS=${HERDR_WORKSPACE_ID:-}
 HUMAN=${CONTROLROOM_HUMAN:-YOU}   # name shown in "WAITING ON …"; set CONTROLROOM_HUMAN=Lance in your shell if you like
 
 note(){ echo "[$(date '+%m-%d %H:%M')] $1 — $2" >> "$LOG"; herdr notification show "$1" --body "$2" --sound "${3:-done}" --position top-right >/dev/null 2>&1; }
-# verify <agent> → prints done | crashed | stalled. herdr's "done/idle" only means the prompt stopped;
+# verify <agent> → working | blocked | done | crashed | stalled. herdr's "done/idle" only means the prompt stopped;
+# stalled = the agent stopped with neither a DONE line nor an API error in its pane (needs a look or a resume).
 # a worker is done when its pane shows the "DONE <name>" line; crashed when the tail shows a proxy/API error.
 verify(){
+  live=$(herdr agent list 2>/dev/null | NAME="$1" python3 -c 'import json,sys,os
+try: print(next(a["agent_status"] for a in json.load(sys.stdin)["result"]["agents"] if a.get("name")==os.environ["NAME"]))
+except Exception: print("")')
+  case "$live" in working) echo working; return;; blocked) echo blocked; return;; esac
   herdr agent read "$1" --source visible --lines 200 --format text 2>/dev/null | NAME="$1" python3 -c '
 import sys,re,os
 t=sys.stdin.read(); name=os.environ["NAME"]; tail="\n".join(t.splitlines()[-40:])
