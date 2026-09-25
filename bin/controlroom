@@ -186,6 +186,20 @@ except Exception: print("timeout")')
     herdr agent prompt "$NAME" "Resume exactly where you stopped (your previous call failed or was cut off). Check your persisted files and logs first; do not redo finished steps. Every number in your results file must come from your own outputs; if a step did not complete, say so plainly instead of estimating. Finish the brief and reply with the single line: DONE $NAME. $EXTRA" >/dev/null 2>&1
     nohup "$0" watch "$NAME" >/dev/null 2>&1 &
     note "resumed $NAME" "watcher re-armed" none; echo "$NAME resumed, watcher armed" ;;
+  strip-restart)   # controlroom strip-restart — restart the status pager in the pane labelled "status" (after a frozen window / dead pager)
+    need_herdr; pane=$(herdr pane list 2>/dev/null | python3 -c 'import json,sys
+d=json.load(sys.stdin)["result"]; ps=d.get("panes",d)
+print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status"),""))')
+    [ -z "$pane" ] && { echo "no pane labelled status"; exit 1; }
+    herdr pane send-keys "$pane" q >/dev/null 2>&1; sleep 0.5
+    herdr pane run "$pane" "clear; cd '$ROOT' && controlroom statusbar" >/dev/null 2>&1 && echo "status pager restarted in $pane" ;;
+  resume-stalled)  # controlroom resume-stalled [note] — resume every worker that stopped without DONE or crashed (e.g. after a network outage)
+    need_herdr; NOTE=${1:-}; n=0
+    for a in $(herdr agent list 2>/dev/null | python3 -c 'import json,sys
+for a in json.load(sys.stdin)["result"]["agents"]:
+    if a.get("name") and a.get("name")!="controller" and a["agent_status"] in ("done","idle"): print(a["name"])'); do
+      v=$(verify "$a"); case "$v" in crashed|stalled) "$0" resume "$a" "$NOTE" >/dev/null; echo "resumed $a ($v)"; n=$((n+1));; esac
+    done; echo "$n resumed" ;;
   watch-log)
     f=$1; label=$2; until grep -qE 'END|DONE|rc=[0-9]' "$f" 2>/dev/null; do sleep 60; done
     note "pipeline: $label finished" "$(tail -1 "$f")" ;;
