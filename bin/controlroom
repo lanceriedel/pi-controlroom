@@ -94,7 +94,14 @@ for f in sorted(glob.glob(os.path.join(root,"logs","*.log"))):
     mt=os.path.getmtime(f); last=lines[-1] if lines else ""
     marks=[l for l in lines if re.search(r"\bSTART\b|\bEND\b|\bDONE\b|rc=|FAIL|Traceback|PIPELINE",l)]
     lm=marks[-1] if marks else ""
-    if re.search(r"rc=[1-9]|\bFAIL(ED)?\b|Traceback",lm): st,col="FAILED","\033[31;1m"
+    # a service log: a Traceback is stale if any successful request line (HTTP 200) follows it
+    if "Traceback" in lm:
+        idx=max(i for i,l in enumerate(lines) if l==lm)
+        if any(re.search(r'" (200|204) -', l) for l in lines[idx+1:]): st_override="serving"; lm=lines[-1]
+        else: st_override=None
+    else: st_override=None
+    if st_override: st,col=st_override,"\033[32m"
+    elif re.search(r"rc=[1-9]|\bFAIL(ED)?\b|Traceback",lm): st,col="FAILED","\033[31;1m"
     elif re.search(r"\bEND\b|\bDONE\b|rc=0",lm): st,col="done","\033[32m"
     elif re.search(r"START",lm): st,col=("running","\033[33m") if now-mt<3*3600 else ("stale?","\033[90m")
     else: st,col="no-marker","\033[90m"
