@@ -202,9 +202,10 @@ print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status"),""))')
     herdr pane run "$pane" "clear; cd '$ROOT' && controlroom statusbar" >/dev/null 2>&1 && echo "status pager restarted in $pane" ;;
   resume-stalled)  # controlroom resume-stalled [note] — resume every worker that stopped without DONE or crashed (e.g. after a network outage)
     need_herdr; NOTE=${1:-}; n=0
-    for a in $(herdr agent list 2>/dev/null | python3 -c 'import json,sys
+    for a in $(herdr agent list 2>/dev/null | WS="$WS" python3 -c 'import json,sys,os
+ws=os.environ.get("WS")
 for a in json.load(sys.stdin)["result"]["agents"]:
-    if a.get("name") and a.get("name")!="controller" and a["agent_status"] in ("done","idle"): print(a["name"])'); do
+    if a.get("name") and not a["name"].endswith("controller") and (not ws or a.get("workspace_id")==ws) and a["agent_status"] in ("done","idle"): print(a["name"])'); do
       v=$(verify "$a"); case "$v" in crashed|stalled) "$0" resume "$a" "$NOTE" >/dev/null; echo "resumed $a ($v)"; n=$((n+1));; esac
     done; echo "$n resumed" ;;
   watch-log)
