@@ -1,2 +1,5 @@
 .DS_Store
 __pycache__/
+logs/
+docs/briefs/memory/.dream-brief.md
+docs/briefs/memory/.dream-pre.json

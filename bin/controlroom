@@ -10,6 +10,16 @@
 #   controlroom status                 one-shot text status (what the strip shows)
 #   controlroom retire <agent> [why]   close a worker's tab (session stays resumable), log it on the board
 #   controlroom gc [--hours 24] [--apply] [--keep a,b]   list/retire workers idle longer than N hours
+#   controlroom decide|lesson "<one-liner>" --from <source> [--slug s]   append a D###/L### line to docs/briefs/memory/ (no source, no line)
+#   controlroom supersede <ID> <byID> · memory [--counts|--decisions|--lessons|--unsourced] · land [<agent|brief>…]  (memory + landed ledger)
+#   controlroom tick [--once] [--dry-run] [--loop] [--root R]   the 60 s reconciler (launchd): watch rows → verify/toast, re-arm from STATUS.md, health, auto-play
+#   controlroom health [--json] [<agent>…] · automations        last write / stuck? / spinning? / $ / ctx% per agent · the AUTOMATIONS.md table
+#   controlroom pause [--resume-after Nm] [reason] · play       logs/PAUSED: launch refuses (exit 3, --force), workers drain · tick-install|tick-uninstall
+#   controlroom wake <when> "<instr>" [--prompt|--no-prompt] [--repeat "every 30m"] · watch-path "<glob>" "<instr>" [--prompt] · cancel A### · automations [--all]   (006) rows the tick fires; wake prompts the controller
+#   controlroom dream [--reason r] [--since ISO|7d] [--here] · dream --check · promote P###…|--all [--kind D|L] · reject P### [why]   propose-only memory consolidation (prompts/dream.md → dreamer-N)
+#   controlroom event <kind> [arg] [src] (008) log an extension/tick event to logs/agents.log: flush-requested <pct> [ext|manual] (toast once, marker) · compaction <tokensBefore> (logs/.compactions) · ext-error <msg>
+#   controlroom verify <agent> · lastline <agent> · resume <agent> [note] · resume-stalled [note] · strip-restart · detail|detail-on|detail-off   (worker state from the pane · re-prompt + re-arm · pager · strip detail)
+#   controlroom cancel --prune-fired    (012) drop fired/cancelled one-shot rows from AUTOMATIONS.md (ids never reused) · touch logs/AUTOPROMPT-OFF = per-room kill switch (tick + strip)
 set -u
 CMD=${1:-help}; shift || true
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -38,7 +48,7 @@ else: print("stalled")'
 need_herdr(){ [ "${HERDR_ENV:-}" = 1 ] || { echo "not inside a Herdr pane (HERDR_ENV!=1)"; exit 1; }; }
 
 status_text(){
-  printf '\033[1m CONTROL ROOM  %s  %s\033[0m   (say "ok" in CONTROLLER to integrate · \033[31;1mblocked\033[0m = needs you)\n' "$(date '+%a %H:%M')" "$(basename "$ROOT")"
+  printf '\033[1m CONTROL ROOM  %s  %s\033[0m   (say "ok" in CONTROLLER to integrate · \033[31;1mblocked\033[0m = needs you)%s\n' "$(date '+%a %H:%M')" "$(basename "$ROOT")" "$(cr5 pause-hdr)"
   DETAIL=0; [ -f "$DETAIL_FLAG" ] && DETAIL=1
   AGENTS_JSON=$(herdr agent list 2>/dev/null) WS="$WS" DETAIL="$DETAIL" ROOT="$ROOT" SELF="$0" python3 - <<'PY'
 import json,sys,os,re,subprocess
@@ -55,29 +65,28 @@ try:
 except Exception: pass
 def lastline(name):
     try:
-        t=subprocess.run(["herdr","agent","read",name,"--source","visible","--lines","50","--format","text"],capture_output=True,text=True,timeout=3).stdout
-        lines=[l.rstrip() for l in t.splitlines() if l.strip() and not set(l.strip())<=set("─═-│┌┐└┘ ")]
-        cmds=[l.strip() for l in lines if re.match(r"^\s*\$ ", l)]
-        if cmds: return "$ "+re.sub(r"^\$\s*","",cmds[-1])[:140]
-        for l in reversed(lines):
-            if re.search(r"claude|anthropic|\(auto\)|^~/|ctrl\+o|Working ─", l): continue
-            return l.strip()[:140]
-    except Exception: pass
-    return ""
+        return subprocess.run([os.environ.get("SELF","controlroom"),"lastline",name],capture_output=True,text=True,timeout=5).stdout.strip()   # one impl: `controlroom lastline` (005)
+    except Exception: return ""
+try: H=json.load(open(os.path.join(root,"logs/.health.json"))).get("agents",{})   # written by `controlroom tick` / `health` (005)
+except Exception: H={}
+col.update({"stuck?":"\033[31;1m","spinning?":"\033[33m"})
 print(" AGENTS" + ("  (detail on — Ctrl+B D to toggle)" if detail else "  (Ctrl+B D for detail)"))
 for a in ags:
     if ws and a.get("workspace_id")!=ws: continue
-    n=a.get("name") or a["pane_id"]; st=a["agent_status"]
+    n=a.get("name") or a["pane_id"]; st=a["agent_status"]; h=H.get(n,{})
+    if st=="working" and h.get("flag"): st=h["flag"]
     if st in ("done","idle") and a.get("name"):
         try:
-            v=subprocess.run(["bash","-c",f'source "{os.environ.get("SELF","")}" __lib__ 2>/dev/null; verify "{n}"'],capture_output=True,text=True,timeout=4).stdout.strip()
+            v=subprocess.run(["bash","-c",f'source "{os.environ.get("SELF","")}" __lib__ 2>/dev/null; verify "$1"',"_",n],capture_output=True,text=True,timeout=4).stdout.strip()   # (012) 011 #13: name as argv
         except Exception: v=""
         st={"done":"done","crashed":"crashed","stalled":"stalled"}.get(v, st)
-    print(f"   {col.get(st,'')}{st:<8}\033[0m {n:<18} {a['pane_id']}" + (f"   \033[90m{tasks.get(n,'')[:90]}\033[0m" if detail and tasks.get(n) else ""))
-    if detail and st=="working":
+    print(f"   {col.get(st,'')}{st:<8}\033[0m {n:<18} {a['pane_id']}" + (f"   \033[90m{tasks.get(n,'')[:90]}\033[0m" if detail and tasks.get(n) else "")
+          + (f"   \033[90mlast write {h['last_write']} · ctx {h.get('ctx_pct','?')}%\033[0m" if detail and h.get("last_write") else ""))
+    if detail and st in ("working","stuck?","spinning?"):
         ll=lastline(n)
         if ll: print(f"            \033[36m→ {ll}\033[0m")
 PY
+  DETAIL="$DETAIL" cr5 strip   # TICK heartbeat line (+ COST in detail) (005)
   printf ' PIPELINES  (last 10 by time · running=yellow · no-marker=no START/END lines in the log%s)\n' "$([ "$DETAIL" = 1 ] && echo ' · detail: show all')"
   ROOT="$ROOT" DETAIL="$DETAIL" python3 - <<'PY'
 import os,re,time,glob
@@ -88,7 +97,7 @@ def age(t):
 rows=[]
 for f in sorted(glob.glob(os.path.join(root,"logs","*.log"))):
     name=os.path.basename(f)[:-4]
-    if name=="agents": continue
+    if name in ("agents","tick"): continue   # (012) 011 #11: tick.log is the tick's own log, not a pipeline
     try: lines=[l.rstrip() for l in open(f,errors="replace") if l.strip()]
     except Exception: continue
     mt=os.path.getmtime(f); last=lines[-1] if lines else ""
@@ -113,25 +122,804 @@ for mt,st,col,name,a,txt in rows:
 if not rows: print("   (none)")
 PY
   printf ' EVENTS (logs/agents.log)\n'; [ -f "$LOG" ] && tail -5 "$LOG" | sed 's/^/   /' | cut -c1-140
+  mem_py strip   # memory (004): one MEMORY line, omitted when docs/briefs/memory/ is absent
+  cr5 auto strip   # automations (006): `AUTOMATIONS  N armed · next A### HH:MM (in Nm) · N held · fired today N`, omitted when only watch/play rows exist
   if [ -f "$ROOT/docs/briefs/STATUS.md" ]; then
     printf ' WAITING ON %s\n' "$(echo "$HUMAN" | tr a-z A-Z)"
     awk '/^## Decisions waiting/{f=1;next} /^## /{f=0} f && /^[0-9]+\./ && !/~~/' "$ROOT/docs/briefs/STATUS.md" | cut -c1-140 | sed 's/^/   /'
-    printf ' BRIEFS   %s\n' "$(ls "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -v -E 'README|STATUS' | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' | tr '\n' ' ')"
+    printf ' BRIEFS   %s\n' "$(ls "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -v -E 'README|STATUS|AUTOMATIONS' | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' | tr '\n' ' ')"
   fi
 }
 
+# ---- tick/health/pause (005) ----  one reconciler (`tick`, launchd every 60 s) + `health` (stuck?/spinning?/$) + `pause`/`play`
+# cr5 <tick|health|auto|pause|play|pause-hdr|strip|plist> [args…]; data via argv/env (stdin is the heredoc). Design: docs/design/durable-controlroom.md §2 §4 §6.
+AUTOS="$ROOT/docs/briefs/AUTOMATIONS.md"; PAUSED="$ROOT/logs/PAUSED"
+cr5(){ ROOT="$ROOT" SELF="$0" WS="$WS" LOG="$LOG" DETAIL="${DETAIL:-0}" python3 - "$@" <<'PY'
+import json,os,re,sys,time,glob,subprocess,atexit,datetime as dt
+ROOT=os.environ["ROOT"]; SELF=os.environ["SELF"]; WS=os.environ.get("WS") or None
+BR=os.path.join(ROOT,"docs/briefs"); LOGS=os.path.join(ROOT,"logs"); AUTOS=os.path.join(BR,"AUTOMATIONS.md")
+PAUSED=os.path.join(LOGS,"PAUSED"); HCACHE=os.path.join(LOGS,".health.json"); TICKLOG=os.path.join(LOGS,"tick.log"); HEART=os.path.join(LOGS,".tick.last"); LOCK=os.path.join(LOGS,".tick.lock")
+TSTATE=os.path.join(LOGS,".tick-state.json"); CTRL=os.path.join(LOGS,".controller"); AUTOPROMPT=os.environ.get("CONTROLROOM_AUTOPROMPT","1")!="0" and not os.path.exists(os.path.join(LOGS,"AUTOPROMPT-OFF")); RAW=[]   # (006) · (012) 009 bug 5: `touch logs/AUTOPROMPT-OFF` is per-room and visible on the strip
+STUCK=float(os.environ.get("CONTROLROOM_STUCK_MIN",20)); SPIN=float(os.environ.get("CONTROLROOM_SPIN_MIN",30)); IDLE=float(os.environ.get("CONTROLROOM_IDLE_MIN",10))
+now=time.time(); NOW=dt.datetime.now(); cmd,args=sys.argv[1],sys.argv[2:]
+KEYS=["id","kind","state","next","repeat","fired","prompt","instruction","source"]
+COLS="| id | kind | state | next (local) | repeat | fired | prompt controller? | instruction | source |\n|---|---|---|---|---|---|---|---|---|\n"
+HDR="# Automations — control room (%s)\nRows are read and rewritten by `controlroom tick` every minute. `armed` = will fire; `held` = paused; `fired` = done (once) · next (recurring); `cancelled` = via `controlroom cancel` (never delete or edit rows by hand — ids are never reused; `cancel --prune-fired` drops inert one-shots).\nKinds: `watch <agent>` (worker finished/blocked/stuck) · `play` (end a pause) · `wake` (time; prompts the controller by default) · `watch-path <glob>` (newest mtime changed; toast unless --prompt) · `dream` (wake with a fixed instruction) · `flush` / `post-compaction` (tick fallback when the controlroom extension is absent: ctx ≥ 75 %% / compaction seen). Controller pane id: logs/.controller.\n\n"%os.path.basename(ROOT)
+RED,YEL,CYN,DIM,OFF="\033[31;1m","\033[33m","\033[36m","\033[90m","\033[0m"
+def stamp(t=None): return (dt.datetime.fromtimestamp(t) if t else NOW).strftime("%m-%d %H:%M")
+def agem(m): return "?" if m is None else (f"{int(m)}m" if m<60 else (f"{m/60:.1f}h" if m<1440 else f"{m/1440:.1f}d"))
+def iso_epoch(ts):
+    try: return dt.datetime.strptime(ts[:19],"%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc).timestamp()
+    except Exception: return None
+def parse_local(s):
+    for f in ("%Y-%m-%dT%H:%M","%Y-%m-%d %H:%M"):
+        try: return dt.datetime.strptime(s.strip(),f)
+        except Exception: pass
+def sh(cmd,timeout=10):
+    try: return subprocess.run(cmd,capture_output=True,text=True,timeout=timeout).stdout
+    except Exception: return ""
+def lib(fn,*a):   # call an existing bash function (verify/note) from bin/controlroom — reuse, don't fork
+    return subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; {fn} "$@"',"_",*a],capture_output=True,text=True,timeout=20,env=dict(os.environ,ROOT=ROOT)).stdout.strip()
+def agents():
+    try: ags=json.loads(sh(["herdr","agent","list"]))["result"]["agents"]
+    except Exception: return {}
+    RAW[:]=ags; return {a["name"]:a for a in ags if a.get("name") and (not WS or a.get("workspace_id")==WS)}
+def board():   # STATUS.md "## Workers" table → {agent: {brief,state}}
+    out={}; sec=""
+    try:
+        for l in open(os.path.join(BR,"STATUS.md")):
+            if l.startswith("## "): sec=l[3:].strip().lower()
+            if sec.startswith("workers") and l.startswith("|"):
+                c=[x.strip() for x in l.strip().strip("|").split("|")]
+                if len(c)>=4 and c[1] not in ("agent","---","") and not c[1].startswith("-"): out[c[1]]={"brief":c[2],"state":c[3]}
+    except Exception: pass
+    return out
+# --- AUTOMATIONS.md: the ledger is the state; whole table rewritten atomically. (012) 011 #1–#3: monotonic ids, one lock around every load→save, unparseable lines kept verbatim
+POST=[]   # (012) lines inside/after the table that are not rows: kept verbatim below the table on save, never dropped
+def load_autos():
+    if not os.path.exists(AUTOS): return HDR,[]
+    pre,rows,intab=[],[],False; POST[:]=[]
+    for l in open(AUTOS):
+        if l.startswith("| id |"): intab=True; continue
+        if not intab: pre.append(l); continue
+        if not l.strip() or set(l.strip())<=set("|-: "): continue   # blank / separator
+        c=[x.strip().replace("\\|","|") for x in re.split(r"(?<!\\)\|",l.strip())][1:-1]   # `\|` inside a cell is a literal pipe (012)
+        if len(c)>=9 and re.match(r"A\d+$",c[0]): rows.append(dict(zip(KEYS,c[:9])))
+        else: POST.append(l if l.endswith("\n") else l+"\n")
+    if pre and pre[0].startswith("# Automations — control room (") and len([l for l in pre if l.strip()])<=3: pre=HDR.splitlines(True)   # (012) 011 #22: our own preamble follows the current kinds
+    return "".join(pre),rows
+def save_autos(pre,rows):
+    os.makedirs(BR,exist_ok=True); tmp=AUTOS+".tmp"
+    open(tmp,"w").write(pre+COLS+"".join("| "+" | ".join(str(r[k]).replace("|","\\|") for k in KEYS)+" |\n" for r in rows)+("\n"+"".join(POST) if POST else "")); os.replace(tmp,AUTOS); save_state()   # ledger + next_id together
+def lock(wait=True):   # (012) 011 #2/#12: mkdir lock (logs/.tick.lock) around every load→save; tick skips when busy, CLI arms wait ≤ 10 s; stale > 300 s reclaimed without racing
+    for i in range(21):
+        try: os.mkdir(LOCK); atexit.register(unlock); return True
+        except FileExistsError:
+            try: stale=now-os.path.getmtime(LOCK)>300
+            except FileNotFoundError: continue
+            if stale:
+                try: os.rmdir(LOCK)
+                except OSError: pass
+                continue
+            if not wait: return False
+            time.sleep(0.5)
+    die("AUTOMATIONS.md locked (logs/.tick.lock) for > 10 s — retry; if no tick is running: rmdir logs/.tick.lock")
+def unlock():
+    try: os.rmdir(LOCK)
+    except OSError: pass
+def next_id(rows):   # (012) 011 #1: monotonic, kept in .tick-state.json; seeded from every A### ever seen (ledger ∪ tick.log ∪ agents.log) so a hand-deleted row's id is never reused
+    st=load_state(); n=st.get("next_id")
+    if not n:
+        ids=[int(x["id"][1:]) for x in rows]
+        for f in (AUTOS,TICKLOG,os.path.join(LOGS,"agents.log")):
+            try: ids+=[int(m) for m in re.findall(r"\bA(\d{3,})\b",open(f,errors="replace").read())]
+            except Exception: pass
+        n=max(ids+[0])+1
+    st["next_id"]=n+1; return "A%03d"%n
+def add_row(rows,kind,instr,source,prompt="no",nxt="—",repeat="—"):
+    r=dict(id=next_id(rows),kind=kind,state="armed",next=nxt,repeat=repeat,fired="0",prompt=prompt,instruction=instr,source=source); rows.append(r); return r
+def rows_for(rows,agent): return [r for r in rows if r["kind"]==f"watch {agent}"]
+def row_age(r):   # seconds since the row's source stamp ("launch 10-27 12:05"); unknown → old
+    m=re.search(r"(\d\d-\d\d \d\d:\d\d)$",r["source"])
+    if not m: return 10**9
+    t=dt.datetime.strptime(f"{NOW.year}-{m.group(1)}","%Y-%m-%d %H:%M")
+    if t>NOW+dt.timedelta(days=1): t=t.replace(year=NOW.year-1)
+    return (NOW-t).total_seconds()
+def load_paused():
+    if not os.path.exists(PAUSED): return None
+    t=open(PAUSED).read(); d={k:(re.search(k+r"=(\S+)",t) or [None,"-"])[1] for k in ("since","until")}
+    d["reason"]=(re.search(r'reason="([^"]*)"',t) or [None,""])[1]; return d
+def load_cache():
+    try: return json.load(open(HCACHE))
+    except Exception: return {}
+def save_cache(c):
+    tmp=HCACHE+".tmp"; json.dump(c,open(tmp,"w")); os.replace(tmp,HCACHE)
+# ---- automations (006) ----  wake / watch-path / cancel + prompting the controller (§2.3 §2.5); state outside the table lives in logs/.tick-state.json
+TODAY=NOW.strftime("%Y-%m-%d"); UNIT={"s":1,"m":60,"h":3600,"d":86400}
+RULES="Rules: files first (STATUS.md, results/, logs/agents.log). Do the round, update STATUS.md, record any decision/lesson with controlroom decide|lesson --from …, then end with one line: what you did and which automation wakes you next (controlroom automations)."
+def die(m): print(m,file=sys.stderr); sys.exit(1)
+_ST={}   # (012) one in-memory copy per process so add_row's next_id and the tick's bookkeeping save together
+def load_state():
+    if not _ST:
+        try: _ST.update(json.load(open(TSTATE)))
+        except Exception: pass
+    return _ST
+def save_state(s=None):
+    if not _ST: return
+    tmp=TSTATE+".tmp"; json.dump(_ST,open(tmp,"w")); os.replace(tmp,TSTATE)
+def fmt(t): return t.strftime("%Y-%m-%d %H:%M")
+def human(t): d=(t-NOW).total_seconds()/60; return (t.strftime("%H:%M") if t.date()==NOW.date() else t.strftime("%m-%d %H:%M"))+f" (in {agem(max(d,0))})"
+def next_after(spec,base):   # next firing strictly after now for `every Nm|h|d|s` / `daily HH:MM` / `weekdays HH:MM`
+    m=re.match(r"^every (\d+)([smhd])$",spec)
+    if m:
+        step=dt.timedelta(seconds=int(m.group(1))*UNIT[m.group(2)]); t=(base or NOW)+step
+        while t<=NOW: t+=step
+        return t
+    m=re.match(r"^(daily|weekdays) (\d\d?):(\d\d)$",spec)
+    if not m: die(f"bad repeat: {spec!r} (every 30m | daily 06:00 | weekdays 06:00)")
+    t=NOW.replace(hour=int(m.group(2)),minute=int(m.group(3)),second=0,microsecond=0)
+    while t<=NOW or (m.group(1)=="weekdays" and t.weekday()>4): t+=dt.timedelta(days=1)
+    return t
+def parse_when(s):   # → (first firing, repeat): 15m | 2h | 18:12 | 2026-10-28T06:00 | "every 30m" | "daily 06:00" | "weekdays 06:00"
+    s=s.strip(); m=re.match(r"^(\d+)([smhd])$",s)
+    if m: return NOW+dt.timedelta(seconds=int(m.group(1))*UNIT[m.group(2)]),"once"
+    if re.match(r"^every |^daily |^weekdays ",s): return next_after(s,NOW),s
+    m=re.match(r"^(\d\d?):(\d\d)$",s)
+    if m: t=NOW.replace(hour=int(m.group(1)),minute=int(m.group(2)),second=0,microsecond=0); return (t if t>NOW else t+dt.timedelta(days=1)),"once"
+    t=parse_local(s)
+    if not t: die(f"bad <when>: {s!r} (15m | 2h | 18:12 | 2026-10-28T06:00 | \"every 30m\" | \"daily 06:00\" | \"weekdays 06:00\")")
+    return t,"once"
+def is_auto(r): return r["kind"].split()[0] in ("wake","dream","watch-path","flush","post-compaction")   # (008) flush rows are automations too
+def next_wake(rows):   # (row, datetime) of the soonest armed wake/dream row, or None
+    c=[(parse_local(r["next"]),r) for r in rows if r["kind"] in ("wake","dream") and r["state"]=="armed"]; c=[(t,r) for t,r in c if t]
+    return (min(c,key=lambda x:x[0])[1],min(c,key=lambda x:x[0])[0]) if c else None
+def controller():   # L012: resolve by pane id recorded in logs/.controller (init / tick-install); fall back to the name `controller` in this workspace. (012) 011 #5: a recycled pane id whose agent is named something else is never the controller
+    RAW or agents(); pid=open(CTRL).read().strip() if os.path.exists(CTRL) else ""
+    a=next((x for x in RAW if pid and x["pane_id"]==pid and (not x.get("name") or x["name"].endswith("controller"))),None) or next((x for x in RAW if x.get("name")=="controller" and (not WS or x.get("workspace_id")==WS)),None)
+    return (a["pane_id"],a["agent_status"]) if a else (None,None)
+def prompt_controller(rid,text,st,dry,cap=True):   # §2.5 → ok | off | backlog | blocked. working → still sent (pi queues typed input as a follow-up). (012) 011 #5: no controller = blocked (retry each tick, toast once after 30 min); 011 #6: cap=False for flush/post-compaction
+    if not AUTOPROMPT: return "off"
+    if "prompts" not in st:   # (012) 009 bug 6: state lost → rebuild this hour's count from agents.log
+        try: st["prompts"]=[t.timestamp() for l in open(os.path.join(LOGS,"agents.log")) if "→ prompted controller" in l for t in [parse_local(f"{NOW.year}-{l[1:12]}")] if t and now-t.timestamp()<3600]
+        except Exception: st["prompts"]=[]
+    st["prompts"]=[t for t in st.get("prompts",[]) if now-t<3600]
+    if cap and len(st["prompts"])>=6:
+        if now-st.get("backlog_toast",0)>3600 and not dry: lib("note","automation backlog",f"{rid} waits — 6 controller prompts already this hour (cap)","none"); st["backlog_toast"]=now
+        return "backlog"
+    def stall(why,body):
+        b=st.setdefault("blocked",{}); b.setdefault(rid,now)
+        if now-b[rid]>1800 and not st.setdefault("blocked_toast",{}).get(rid) and not dry: lib("note",f"{why} 30 min — {rid} waiting",body,"request"); st["blocked_toast"][rid]=now
+        return "blocked"
+    tgt,status=controller()
+    if not tgt: return stall("no controller found","logs/.controller is stale or the pane was renamed — re-run /controller (controlroom init) in the controller pane")
+    if dry: return "ok"
+    out=subprocess.run(["herdr","agent","prompt",tgt,text],capture_output=True,text=True,timeout=20) if status!="blocked" else None
+    if out and out.returncode==0 and "agent_blocked" not in out.stdout+out.stderr:
+        st["prompts"].append(now); st.get("blocked",{}).pop(rid,None); st.get("blocked_toast",{}).pop(rid,None); open(os.path.join(LOGS,"agents.log"),"a").write(f"[{stamp()}] {rid} fired → prompted controller ({tgt}, was {status})\n"); return "ok"
+    return stall("controller blocked","answer it (herdr agent focus controller) so automations can prompt it")
+# ---- end 006 helpers (tick steps 5–6 and the CLI arms are marked (006) below) ----
+# ---- compaction (008) ----  §7.4 shell fallback for the controller when extensions/controlroom.ts is absent, + `controlroom event`. Shared guard: logs/.flush-requested
+FLUSH_PCT=int(os.environ.get("CONTROLROOM_FLUSH_PCT",75)); FLUSHED=os.path.join(LOGS,".flush-requested"); ALIVE=os.path.join(LOGS,".ext-alive"); COMPS=os.path.join(LOGS,".compactions")
+FLUSH_TEXT="[controlroom · flush] Context at %d%% (threshold %d%%). Before compaction: run `controlroom memory`, then record every decision/lesson from this session that is not yet there (controlroom decide|lesson --from <file>), update STATUS.md, note your next wake. Then reply `/compact`."
+ROUND="round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h — cancel it only when arming a replacement"   # (012) the standing round wake (init / Boot)
+POST_TEXT=f"[controlroom · post-compaction] Your context was just compacted. Re-run Boot (STATUS.md, controlroom memory, automations). Record anything the summary mentions that memory lacks. If `controlroom automations` shows no armed recurring round wake, arm it: controlroom wake 2h \"{ROUND}\" --repeat \"every 2h\" --prompt"
+def event(kind,arg="",src="ext"):   # one line in agents.log; compaction → .compactions {count,last}; flush-requested → marker + ONE toast per crossing
+    os.makedirs(LOGS,exist_ok=True)
+    if kind=="compaction":
+        try: c=json.load(open(COMPS))
+        except Exception: c={}
+        c={"count":c.get("count",0)+1,"last":fmt(NOW),"tokensBefore":arg}; json.dump(c,open(COMPS,"w")); arg=f"#{c['count']} tokensBefore={arg}"
+    if kind=="flush-requested":
+        fresh=not os.path.exists(FLUSHED); open(FLUSHED,"w").write(f"{NOW:%Y-%m-%dT%H:%M} {src} {arg}\n")
+        if fresh: lib("note","flush requested",f"controller ctx {arg}% ({src}) — asked to flush decisions/lessons to memory, then /compact","none"); return
+    open(os.path.join(LOGS,"agents.log"),"a").write(f"[{stamp()}] {kind} — {arg}\n")
+def ext_alive(s,path):   # (012) 011 #15 + 010 §4: the heartbeat counts only if < 30 min old, written by THIS session's pi (3rd field = session file) and its pid is a live `pi` whose cwd is ROOT — a hidden subagent inheriting HERDR_PANE_ID fails
+    try: ts,pid,*sess=open(ALIVE).read().split(); mt=os.path.getmtime(ALIVE)
+    except Exception: return False
+    if mt<(s.get("start") or 0) or now-mt>1800 or (sess and sess[0]!=path): return False
+    return bool(re.search(r"(^|/)pi(\s|$)",sh(["ps","-o","command=","-p",pid]).strip())) and f"n{ROOT}\n" in sh(["lsof","-p",pid,"-a","-d","cwd","-Fn"])
+def comp_step(rows,st,cache,dry,acts,changed):   # controller only: (1) ctx ≥ FLUSH_PCT ∧ no extension heartbeat ∧ no marker → arm a one-shot `flush` row; (2) compaction count rose → `post-compaction` row. Step 5 fires them this pass.
+    pid,status=controller(); a=next((x for x in RAW if x["pane_id"]==pid),None); path=((a or {}).get("agent_session") or {}).get("value")
+    if not path: return
+    h=health(a.get("name") or "controller",status,path,"",cache,dry=dry); s=cache.get("sessions",{}).get(path) or {}
+    alive=ext_alive(s,path); pct=h.get("ctx_pct"); fs=st.setdefault("flush",{}); fs["ext"]=alive
+    if pct is not None and pct<FLUSH_PCT:
+        if os.path.exists(FLUSHED) and not dry and " manual " not in open(FLUSHED).read()+" ": os.remove(FLUSHED)   # below the line again → the next crossing may fire (either path). (012) 009 bug 4: a manual /flush marker is the extension's to clear
+    elif pct is not None and not alive and not os.path.exists(FLUSHED) and not any(r["kind"]=="flush" and r["state"] in ("armed","held") for r in rows):
+        r=add_row(rows,"flush",FLUSH_TEXT%(pct,FLUSH_PCT),f"tick {stamp()}",prompt="yes",nxt=fmt(NOW),repeat="once"); changed.append(True); acts.append(f"{r['id']} armed flush (ctx {pct}% ≥ {FLUSH_PCT}%, extension absent)")
+        if not dry: event("flush-requested",str(pct),"tick")
+    n=s.get("compactions",0); key="jsonl"   # (012) one source: pi writes a `compaction` entry however it was triggered; switching sources with the heartbeat re-fired old compactions (found by the 012 dry-run)
+    if fs.get(key) is None or n<fs[key]: fs[key]=n   # first sight (or counter reset): baseline, don't fire for history
+    elif n>fs[key]:
+        fs[key]=n; r=add_row(rows,"post-compaction",POST_TEXT,f"tick {stamp()}",prompt="yes",nxt=fmt(NOW),repeat="once"); changed.append(True); acts.append(f"{r['id']} armed post-compaction (compactions {fs[key]} via {key})")
+_MS={}
+def window(model):
+    if not _MS:   # (008) real contextWindow per model id from pi's models-store (claude-fable-5-1 = 1M, not the 200k default)
+        def walk(o):
+            if isinstance(o,dict):
+                if "id" in o and "contextWindow" in o: _MS.setdefault(o["id"],o["contextWindow"])
+                for v in o.values(): walk(v)
+            elif isinstance(o,list):
+                for v in o: walk(v)
+        try: walk(json.load(open(os.path.expanduser("~/.pi/agent/models-store.json"))))
+        except Exception: pass
+        _MS.setdefault("",200000)
+    if model in _MS: return _MS[model]
+    m=(model or "").lower()
+    for k,v in (("gpt-4.1",1000000),("gemini",1000000),("gpt-5",400000),("gpt-4o",128000)):
+        if k in m: return v
+    return 200000
+# ---- end 008 helpers (window() above is 005's, now models-store-aware; tick hook, `event`/`strip` arms and the case arm are marked (008) below) ----
+def parse_session(path,cache):
+    try: st=os.stat(path)
+    except OSError: return None
+    today=NOW.strftime("%Y-%m-%d"); c=cache.setdefault("sessions",{}).get(path)
+    if c and c.get("size")==st.st_size and c.get("today")==today and c.get("win")==window(c.get("model")): c["mtime"]=st.st_mtime; return c   # (008) win: recompute when the model window changes
+    cost=toks=n=comp=ctx=0; ctoday=0.0; last_msg=last_write=first_ts=last_act=None; model=""
+    for line in open(path,errors="replace"):
+        try: e=json.loads(line)
+        except Exception: continue
+        t=e.get("type"); ts=e.get("timestamp") or ""; first_ts=first_ts or ts or None
+        if t!="usage" and ts: last_act=ts   # (012) 009 bug 2: pi 1.4.0 cache_warm `usage` entries land every ~4.5 min during a blocking tool call — they are not activity
+        if t=="message":
+            m=e.get("message",{}); last_msg=ts or last_msg
+            if m.get("role")=="assistant":
+                u=m.get("usage") or {}; cc=(u.get("cost") or {}).get("total") or 0; cost+=cc; toks+=u.get("totalTokens") or 0; n+=1; model=m.get("model") or model
+                ep=iso_epoch(ts); ctoday+=cc if ep and dt.datetime.fromtimestamp(ep).strftime("%Y-%m-%d")==today else 0
+                ctx=(u.get("input") or 0)+(u.get("cacheRead") or 0)+(u.get("cacheWrite") or 0)
+                if any(x.get("type")=="toolCall" and x.get("name") in ("write","edit","bash") for x in m.get("content",[])): last_write=ts
+        elif t in ("usage","compaction","branch_summary"):
+            u=e.get("usage") or {}; cost+=(u.get("cost") or {}).get("total") or 0; toks+=u.get("totalTokens") or 0; comp+=t=="compaction"
+            if t=="compaction": ctx=0   # (008) context unknown until the next assistant message → ctx % drops, re-arming the flush guard
+    c=dict(size=st.st_size,mtime=st.st_mtime,today=today,cost=round(cost,2),cost_today=round(ctoday,2),tokens=toks,turns=n,model=model,last_msg=last_msg,last_act=iso_epoch(last_act or ""),
+           last_write_tool=last_write,compactions=comp,ctx_pct=round(100*ctx/window(model)),win=window(model))
+    m=re.match(r"(\d{4}-\d\d-\d\d)T(\d\d)-(\d\d)-(\d\d)",os.path.basename(path)); c["start"]=(iso_epoch(f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}") if m else iso_epoch(first_ts or "")) or st.st_mtime
+    cache["sessions"][path]=c; return c
+def health(name,status,path,brief,cache,toast=True,dry=False):
+    s=parse_session(path,cache) if path else None
+    h=cache.setdefault("agents",{}).setdefault(name,{}); h.update(status=status,path=path,ts=now)
+    if not s: h.update(flag="",last_write=None); return h
+    lw=[s["start"] or 0]+([iso_epoch(s["last_write_tool"])] if s["last_write_tool"] else [])
+    bm=re.search(r"\d{3}",brief or ""); keys={name}|({bm.group(0)} if bm else set())   # (012) 011 #10
+    for pat in ("docs/briefs/results/*","logs/*.log"):
+        lw+=[os.path.getmtime(f) for f in glob.glob(os.path.join(ROOT,pat)) if any(k in os.path.basename(f) for k in keys)]
+    lwt=max(x for x in lw if x); lw_age=(now-lwt)/60; j_age=(now-(s.get("last_act") or s["mtime"]))/60; flag=""   # (012) quiet = since the last non-usage entry, not mtime (L025)
+    if status=="working":
+        if lw_age>STUCK and j_age>=IDLE:   # candidate: no writes, session file quiet → confirm with an unchanged pane tail (lastline, existing)
+            ll=sh([SELF,"lastline",name],6).strip()
+            if h.get("lastline") is not None and h.get("lastline")==ll: flag="stuck?"
+            h["lastline"]=ll
+        else:
+            h["lastline"]=None
+            if lw_age>SPIN and j_age<IDLE: flag="spinning?"
+    else: h["lastline"]=None
+    if flag=="stuck?" and toast and not dry and now-h.get("stuck_toast",0)>3600:
+        lib("note",f"worker {name} STUCK?",f"working, but no write for {agem(lw_age)} and session quiet {agem(j_age)} — check pane / controlroom resume {name}","request"); h["stuck_toast"]=now
+    h.update(flag=flag,last_write=agem(lw_age),last_write_min=round(lw_age,1),session_idle=agem(j_age),session_idle_min=round(j_age,1),cost=s["cost"],cost_today=s["cost_today"],tokens=s["tokens"],turns=s["turns"],ctx_pct=s["ctx_pct"],model=s["model"],compactions=s["compactions"])
+    return h
+def fmt_health(n,h):
+    c={"stuck?":RED,"spinning?":YEL}.get(h.get("flag"),"")
+    if h.get("last_write") is None: return f"   {n:<18} {h.get('status','?'):<8} (no session file)"
+    return (f"   {n:<18} {h['status']:<8} last write {h['last_write']:>5} · session quiet {h['session_idle']:>5} · ${h['cost']:.2f} · {h['tokens']/1e6:.1f}M tok · {h['turns']} turns · ctx {h['ctx_pct']}%"+(f"   {c}{h['flag']}{OFF}" if h.get("flag") else ""))
+# --- the tick (§2.4 steps 1,2,3,4,8; 5–7 are brief 006/008)
+def tick():
+    dry="--dry-run" in args; verbose=dry or "--once" in args or sys.stdout.isatty()
+    if not os.path.isdir(BR): return
+    os.makedirs(LOGS,exist_ok=True)
+    if not lock(wait=False): return   # (012) another tick (or a CLI arm) holds the ledger — skip this pass
+    try: acts=tick_pass(dry)
+    finally: unlock()
+    if verbose: print("\n".join(("DRY  " if dry else "")+a for a in acts) if acts else "tick: nothing to do")
+def tick_pass(dry):
+    acts=[]; pre,rows=load_autos(); changed=[not os.path.exists(AUTOS)]; cache=load_cache(); st=load_state()
+    if POST and st.get("skipped")!=len(POST): acts.append(f"tick: skipped {len(POST)} unparseable row(s) in AUTOMATIONS.md (kept verbatim below the table)"); st["skipped"]=len(POST)   # (012) 011 #3, logged once per count
+    def note(t,b,s="done"):
+        if not dry: lib("note",t,b,s)
+    def fire(r,msg): r["state"]="fired"; r["fired"]=str(int(r["fired"] or 0)+1); changed.append(True); acts.append(f"{r['id']} {msg}")
+    def advance(r):   # (006) after a wake/watch-path firing: fired+1; recurring → compute next, once → fired; counts toward `fired today`
+        k=r["kind"].split()[0]; r["fired"]=str(int(r["fired"] or 0)+1); changed.append(True); st["fired"]={TODAY:st.get("fired",{}).get(TODAY,0)+1}
+        if r["repeat"] in ("once","","—") and k!="watch-path": r["state"]="fired"
+        else: r["state"]="armed"; r["next"]=fmt(next_after(r["repeat"],parse_local(r["next"]))) if k!="watch-path" else "—"
+    def hold(r,why): r["state"]="held"; changed.append(True); acts.append(f"{r['id']} {r['kind'].split()[0]} due → held ({why})")
+    def fire_auto(r,text):   # (006) one wake/watch-path firing: prompt the controller when the row says so, else toast; blocked/backlog → row stays due
+        k=r["kind"].split()[0]; res="toast"
+        if r["prompt"]=="yes":
+            res=prompt_controller(r["id"],text+("" if k in ("flush","post-compaction") else "\n"+RULES),st,dry,cap=k not in ("flush","post-compaction"))   # (008) flush texts are self-contained · (012) 011 #6: flush rows bypass the 6/h cap
+            if res in ("blocked","backlog"):
+                if st.setdefault("waiting",{}).get(r["id"])!=res: acts.append(f"{r['id']} {k} due → {res}, retrying each tick"); st["waiting"][r["id"]]=res
+                return
+        st.get("waiting",{}).pop(r["id"],None)
+        if res!="ok": note(f"{r['id']} {k}",r["instruction"]+(" (autoprompt off)" if res=="off" else ""),"done")
+        advance(r); acts.append(f"{r['id']} {k} fired → "+{"ok":"prompted controller","off":"toast (autoprompt off)","fail":"toast (no controller found)","toast":"toast"}[res]+(f" · next {r['next']}" if r["state"]=="armed" and k!="watch-path" else ""))
+    paused=load_paused()
+    if paused:   # step 2
+        u=parse_local(paused["until"] or "")
+        if u and u<=NOW:
+            if not dry: os.remove(PAUSED)
+            for r in rows:
+                if r["kind"]=="play" and r["state"]=="armed": fire(r,"play (auto)")
+            acts.append(f"play (auto) — pause since {paused['since']} ended · reason: {paused['reason'] or '—'}"); note("PLAY (auto)","pause ended — launches allowed again","done"); paused=None
+    held=[r for r in rows if r["state"]=="held" and is_auto(r)]
+    if held and paused is None:   # (006) §4 play: every held row fires now; the prompt?=yes ones collapse into ONE controller prompt
+        yes=[r for r in held if r["prompt"]=="yes"]; res="toast"
+        if yes: res=prompt_controller("play",f"[play] {len(yes)} automation(s) fired while paused: "+"; ".join(f"{r['id']} {r['instruction']}" for r in yes)+"\n"+RULES,st,dry)
+        if yes and res in ("blocked","backlog"):   # (012) 011 #4: controller unreachable → prompt rows stay held and retry next tick (same bookkeeping as fire_auto); toast-only rows still fire
+            if st.setdefault("waiting",{}).get("play")!=res: acts.append(f"play: {len(yes)} held prompt row(s) → {res}, retrying each tick"); st["waiting"]["play"]=res
+            held=[r for r in held if r not in yes]; yes=[]
+        else: st.get("waiting",{}).pop("play",None)
+        for r in held:
+            if r not in yes or res!="ok": note(f"{r['id']} {r['kind'].split()[0]} (fired on play)",r["instruction"],"done")
+            advance(r)
+        if held: acts.append(f"play: {len(held)} held row(s) fired — "+", ".join(r["id"] for r in held)+(f" · {len(yes)} collapsed into one controller prompt" if yes and res=="ok" else f" · toast ({res})"))
+    ags=agents(); brd=board(); comp_step(rows,st,cache,dry,acts,changed)   # (008) step 7: may add flush / post-compaction rows that step 5 fires below
+    for r in rows:   # step 3
+        kind,_,arg=r["kind"].partition(" ")
+        if r["state"] not in ("armed","held"): continue
+        if kind=="watch":
+            a=ags.get(arg)
+            if a is None:
+                if row_age(r)>180: fire(r,f"watch {arg}: agent not in herdr (retired / Herdr restarted) → toast"); note(f"worker {arg} GONE","not in herdr agent list — retired or Herdr restarted; resume from STATUS.md","request")
+                continue
+            v=a["agent_status"] if a["agent_status"] in ("working","blocked") else lib("verify",arg)
+            if v=="working": st.get("toasted",{}).pop(r["id"],None)
+            if v=="working" or (v=="stalled" and row_age(r)<180): continue   # 180 s launch grace = old watch loop's sleep 90
+            t,b,s={"done":(f"worker {arg}: DONE","results in docs/briefs/results/ — say ok in CONTROLLER","done"),
+                   "crashed":(f"worker {arg} CRASHED (API/proxy error)",f"fix cause, then: controlroom resume {arg}","request"),
+                   "blocked":(f"worker {arg} NEEDS YOU",f"herdr agent focus {arg}","request")}.get(v,(f"worker {arg} stopped WITHOUT DONE",f"check pane; controlroom resume {arg} to continue","request"))
+            if v in ("blocked","stalled"):   # (012) 011 #7: toast once per status and stay armed — only done/crashed/GONE consume the row, so the later DONE still fires
+                if st.setdefault("toasted",{}).get(r["id"])!=v: note(t,b,s); st["toasted"][r["id"]]=v; acts.append(f"{r['id']} watch {arg} → {v} (toast, still armed)")
+                continue
+            note(t,b,s); fire(r,f"watch {arg} → {v} (toast)"+(" · watch-prompt deferred (v1), toast only" if r["prompt"]=="yes" else ""))
+        elif kind=="play":
+            nx=parse_local(r["next"])
+            if paused is None and nx and nx<=NOW: fire(r,"play row past due with no PAUSED marker → fired")
+        elif kind in ("wake","dream","flush","post-compaction"):   # (006) step 5 · (008) flush rows ride the same path (rate cap, blocked retry, hold while paused)
+            nx=parse_local(r["next"])
+            if r["state"]!="armed" or not nx or nx>NOW: continue
+            if paused: hold(r,"paused"); continue
+            fire_auto(r,r["instruction"] if kind in ("flush","post-compaction") else f"[{r['id']} · {kind} · fired {int(r['fired'] or 0)+1}/{r['repeat']} · {NOW:%H:%M}] {r['instruction']}")
+        elif kind=="watch-path":   # (006) step 6: newest mtime under the glob > last_seen (state file) and ≥ 120 s old (debounce)
+            fs=glob.glob(os.path.join(ROOT,arg),recursive=True); newest=max([os.path.getmtime(f) for f in fs],default=0); wp=st.setdefault("wp",{}); seen=wp.setdefault(r["id"],newest)
+            if r["state"]!="armed" or newest<=seen or now-newest<120: continue
+            wp[r["id"]]=newest
+            if paused: hold(r,"paused"); continue
+            fire_auto(r,f"[{r['id']} · watch-path · fired {int(r['fired'] or 0)+1}/on-change · {NOW:%H:%M}] {r['instruction']} — changed: {os.path.relpath(max(fs,key=os.path.getmtime),ROOT)}")
+    for n,a in ags.items():   # health (§6): stuck?/spinning? only for working agents; cost refreshed for all (cached by size, so free)
+        h=health(n,a["agent_status"],(a.get("agent_session") or {}).get("value"),brd.get(n,{}).get("brief",""),cache,dry=dry)
+        if h.get("flag") and h.get("flag")!=cache.get("flag_logged",{}).get(n): acts.append(f"health {n}: {h['flag']} (last write {h['last_write']}, session quiet {h['session_idle']})")
+        cache.setdefault("flag_logged",{})[n]=h.get("flag")
+    for n,b in brd.items():   # step 4 re-arm: board says working/launched, agent live, no row ever → arm (fired rows block re-arm; `resume` re-arms explicitly)
+        if b["state"].split()[0] in ("working","launched") and n in ags and not rows_for(rows,n):
+            r=add_row(rows,f"watch {n}",f"integrate {b['brief']} when DONE",f"rearm {stamp()}"); changed.append(True); acts.append(f"{r['id']} armed watch {n} (rearm from STATUS.md)")
+    if not dry:   # step 8
+        if any(changed): save_autos(pre,rows)
+        save_cache(cache); save_state(st); open(HEART,"w").write(f"{int(now)} {'ok' if not acts else str(len(acts))+' actions'}\n")
+        if acts: open(TICKLOG,"a").write("".join(f"[{stamp()}] {a}\n" for a in acts))
+    return acts
+# --- subcommands
+if cmd=="tick": tick()
+elif cmd=="health":
+    js="--json" in args; names=[a for i,a in enumerate(args) if not a.startswith("--") and (i==0 or args[i-1] not in ("--jsonl","--name","--status"))]
+    opt=lambda k: args[args.index(k)+1] if k in args else None
+    cache=load_cache(); brd=board(); out={}
+    if opt("--jsonl"):   # point health at any session file (testing: fake a stuck worker with an old-mtime copy)
+        n=opt("--name") or "test"; out[n]=health(n,opt("--status") or "working",opt("--jsonl"),brd.get(n,{}).get("brief",""),cache)
+    else:
+        ags=agents()
+        for n in (names or sorted(ags)):
+            a=ags.get(n)
+            if not a: out[n]={"status":"missing","flag":"","last_write":None}; continue
+            out[n]=health(n,a["agent_status"],(a.get("agent_session") or {}).get("value"),brd.get(n,{}).get("brief",""),cache)
+    save_cache(cache)
+    if js: print(json.dumps(out,indent=1))
+    else:
+        for n,h in out.items(): print(fmt_health(n,h))
+        print(f"   {DIM}thresholds: stuck? = working ∧ last write > {agem(STUCK)} ∧ session quiet ≥ {agem(IDLE)} ∧ pane tail unchanged · spinning? = working ∧ last write > {agem(SPIN)} ∧ session growing{OFF}")
+elif cmd=="auto":
+    sub=args[0]; sub in ("arm","wake","watch-path","cancel","round") and lock(); pre,rows=load_autos()   # (012) 011 #2: writers take the tick lock
+    if sub=="init":
+        if os.path.exists(AUTOS): print("AUTOMATIONS.md present (skipped)")
+        else: save_autos(pre,rows); print("AUTOMATIONS.md created")
+    elif sub=="arm":   # auto arm <agent> <instruction|""> <source>
+        n,instr,src=args[1],args[2],args[3]; have=rows_for(rows,n)
+        if have: r=have[-1]; r.update(state="armed",next="—",source=src,instruction=instr or r["instruction"])
+        else: r=add_row(rows,f"watch {n}",instr or f"integrate when DONE",src)
+        save_autos(pre,rows); print(f"{r['id']} armed watch {n}")
+    # ---- automations (006) arms: wake · watch-path · cancel A### · list --all · strip ----
+    elif sub=="wake":   # auto wake <when> "<instruction>" [--prompt|--no-prompt] [--repeat spec]
+        pos,rep,pr,i=[],None,"yes",1
+        while i<len(args):
+            if args[i]=="--repeat" and i+1<len(args): rep=args[i+1]; i+=2
+            elif args[i] in ("--prompt","--no-prompt"): pr="yes" if args[i]=="--prompt" else "no"; i+=1
+            else: pos.append(args[i]); i+=1
+        if len(pos)<2: die('usage: controlroom wake <when> "<instruction>" [--prompt|--no-prompt] [--repeat "every 30m"|"daily 06:00"|"weekdays 06:00"]')
+        nxt,rep0=parse_when(pos[0]); rep=rep or rep0
+        if rep!="once": next_after(rep,NOW)   # validates the spec
+        kind="dream" if pos[1].startswith("controlroom dream") else "wake"
+        r=add_row(rows,kind,pos[1],f"wake {stamp()}",prompt=pr,nxt=fmt(nxt),repeat=rep); save_autos(pre,rows); at=human(nxt).split(" (")[0]+("" if rep=="once" else f" ({rep})")
+        print(f"{r['id']} armed — {'wakes controller' if pr=='yes' else 'toast (no prompt)'} at {human(nxt)}{'' if rep=='once' else ' · '+rep}: \"{pos[1]}\"")
+        print(f"→ Say to the human: \"{r['id']} wakes me at {at}; from that round I'll {pos[1]}.\"" if pr=="yes" else f"→ Say to the human: \"{r['id']} toasts you at {at}: {pos[1]}.\"")
+    elif sub=="watch-path":   # auto watch-path "<glob>" "<instruction>" [--prompt]; baseline = current newest mtime so existing files never fire
+        pos=[x for x in args[1:] if not x.startswith("--")]
+        if len(pos)<2: die('usage: controlroom watch-path "<glob>" "<instruction>" [--prompt]')
+        r=add_row(rows,f"watch-path {pos[0]}",pos[1],f"watch-path {stamp()}",prompt="yes" if "--prompt" in args else "no",repeat="on-change")
+        s=load_state(); s.setdefault("wp",{})[r["id"]]=max([os.path.getmtime(f) for f in glob.glob(os.path.join(ROOT,pos[0]),recursive=True)],default=0); save_state(s); save_autos(pre,rows)
+        print(f"{r['id']} armed — watch-path {pos[0]}: fires when a newer file appears (≥ 120 s old) → {'prompts controller' if r['prompt']=='yes' else 'toast'}: \"{pos[1]}\"")
+    elif sub=="cancel" and len(args)>1 and args[1]=="--prune-fired":   # (012) the only row remover: fired/cancelled one-shot wake-type rows leave the table (watch rows stay — they block step-4 re-arm); ids are never reused, history stays in tick.log
+        keep=[r for r in rows if r["state"] in ("armed","held") or r["kind"].startswith("watch") or r["repeat"] not in ("once","—","")]; n=len(rows)-len(keep); rows[:]=keep
+        if n: save_autos(pre,rows)
+        print(f"{n} fired/cancelled one-shot row(s) pruned from AUTOMATIONS.md (ids stay reserved: next {'A%03d'%load_state().get('next_id',0)}; history in logs/tick.log)")
+    elif sub=="cancel" and len(args)>1 and re.match(r"A\d+$",args[1]):   # cancel A###
+        r=next((x for x in rows if x["id"]==args[1]),None)
+        if not r: die(f"{args[1]} not found")
+        if r["state"] not in ("armed","held"): print(f"{r['id']} is {r['state']} — nothing to cancel"); sys.exit(0)
+        r["state"]="cancelled"; r["source"]+=f" · cancelled {stamp()}"; save_autos(pre,rows); print(f"{r['id']} cancelled ({r['kind']})")
+    elif sub=="round":   # (012) 010 §4(c): arm the standing round wake unless an armed recurring `round:` wake exists
+        if any(r["kind"]=="wake" and r["state"]=="armed" and r["instruction"].startswith("round:") for r in rows): print("round wake present (skipped)")
+        else: r=add_row(rows,"wake",ROUND,f"init {stamp()}",prompt="yes",nxt=fmt(NOW+dt.timedelta(hours=2)),repeat="every 2h"); save_autos(pre,rows); print(f"{r['id']} armed — round wake every 2h: prompts the controller to integrate/land/update STATUS")
+    elif sub=="strip":   # AUTOMATIONS strip line (after MEMORY); silent when no wake/watch-path/dream rows exist
+        A=[r for r in rows if is_auto(r) and r["state"]!="cancelled"]
+        if not A: sys.exit()
+        nx=next_wake(rows); held=sum(r["state"]=="held" for r in A)
+        print(f" AUTOMATIONS  {sum(r['state']=='armed' for r in A)} armed"+(f" · next {nx[0]['id']} {human(nx[1])}" if nx else "")+(f" · {YEL}{held} held{OFF}" if held else "")+f" · fired today {load_state().get('fired',{}).get(TODAY,0)}"+("" if AUTOPROMPT else f"   {YEL}autoprompt off{OFF}"))
+    # ---- end 006 arms ----
+    elif sub=="cancel":
+        len(args)>1 or die("usage: controlroom cancel A### | <agent>")   # (012) 011 #16
+        k=[r for r in rows_for(rows,args[1]) if r["state"] in ("armed","held")]
+        for r in k: r["state"]="cancelled"; r["source"]+=f" · cancelled {stamp()}"
+        if k: save_autos(pre,rows)
+        print(f"{len(k)} watch row(s) cancelled for {args[1]}")
+    elif sub=="list":   # (006) hides cancelled rows unless --all; adds the `next:` line
+        show=[r for r in rows if "--all" in args or r["state"]!="cancelled"]
+        for r in show: print(f"   {r['id']} {r['kind']:<24} {r['state']:<9} next {r['next']:<17} fired {r['fired']:<3} prompt {r['prompt']:<3} {r['instruction'][:50]:<50} ← {r['source']}")
+        if not show: print("   (no automations)"+(f" · {len(rows)-len(show)} cancelled (--all)" if len(rows)>len(show) else ""))
+        nx=next_wake(rows); print((f"   next: {nx[0]['id']} {human(nx[1])}" if nx else "   next: — (no armed wake)")+("" if AUTOPROMPT else "   autoprompt off"))
+elif cmd=="pause":
+    mins=None; rest=[]; i=0
+    while i<len(args):
+        if args[i]=="--resume-after" and i+1<len(args):
+            v=args[i+1]; mins=float(v[:-1])*(60 if v.endswith("h") else 1) if v[-1] in "mh" else float(v); i+=2
+        else: rest.append(args[i]); i+=1
+    reason=" ".join(rest); since=NOW.strftime("%Y-%m-%dT%H:%M"); until=(NOW+dt.timedelta(minutes=mins)).strftime("%Y-%m-%dT%H:%M") if mins else "-"
+    os.makedirs(LOGS,exist_ok=True); open(PAUSED,"w").write(f'since={since} until={until} reason="{reason}"\n')
+    msg=f"PAUSED since {since[11:]}"+(f" · play at {until[11:]}" if mins else "")
+    if mins:
+        lock(); pre,rows=load_autos()   # (012) 011 #2
+        for r in rows:
+            if r["kind"]=="play" and r["state"]=="armed": r["state"]="cancelled"
+        r=add_row(rows,"play",f"play (from pause --resume-after {int(mins)}m)",f"pause {stamp()}",prompt="—",nxt=until.replace("T"," "),repeat="once"); save_autos(pre,rows); msg+=f" ({r['id']})"
+    lib("note",msg,(reason or "no new launches; in-flight workers drain")+" — controlroom play to resume","none"); print(msg+" — launch refuses (use --force); workers drain; controlroom play to resume")
+elif cmd=="play":
+    p=load_paused()
+    if not p: print("not paused"); sys.exit(0)
+    os.remove(PAUSED); lock(); pre,rows=load_autos(); k=0   # (012) 011 #2
+    for r in rows:
+        if r["kind"]=="play" and r["state"]=="armed": r["state"]="cancelled"; r["source"]+=f" · play {stamp()}"; k+=1
+    if k: save_autos(pre,rows)
+    lib("note","PLAY",f"pause since {p['since'][11:]} ended — launches allowed again","done"); print(f"play — paused since {p['since']} ended"+(f"; {k} play row cancelled" if k else ""))
+    unlock()
+    if any(r["state"]=="held" for r in rows): tick()   # (006) fire held rows now, collapsed into one controller prompt
+elif cmd=="pause-hdr":   # header fragment for status_text; empty when not paused
+    p=load_paused()
+    if p:
+        n=sum(1 for a in agents().values() if a["agent_status"]=="working"); pre,rows=load_autos()
+        pr=next((r for r in rows if r["kind"]=="play" and r["state"]=="armed"),None)
+        print(f"   {YEL}PAUSED since {p['since'][5:].replace('T',' ')} · {n} draining"+(f" · play at {p['until'][11:]}"+(f" ({pr['id']})" if pr else "") if p["until"] not in ("-","") else "")+OFF)
+    nx=next_wake(load_autos()[1])   # (006) header gains `next A002 18:12` when a wake is armed
+    if nx: print(f"   {DIM}next {nx[0]['id']} {human(nx[1]).split(' (')[0]}{OFF}")
+elif cmd=="strip":   # TICK line (+ COST line in detail) for status_text
+    try: t,_,s=open(HEART).read().strip().partition(" "); t=float(t)
+    except Exception: t=None
+    if t is None: print(f" {RED}TICK  not running{OFF}  — controlroom tick-install (or: controlroom tick --loop)")
+    elif now-t>300: print(f" {RED}TICK  not running{OFF}  last {time.strftime('%H:%M',time.localtime(t))} ({agem((now-t)/60)} ago) — controlroom tick-install")
+    else: print(f" TICK  last {time.strftime('%H:%M:%S',time.localtime(t))} · {s}")
+    if os.environ.get("DETAIL")=="1":
+        A=load_cache().get("agents",{}); c=lambda f: sum(h.get("cost",0) for n,h in A.items() if f(n) and h.get("status")!="missing")
+        print(f" COST  controller ${c(lambda n: n.endswith('controller')):.2f} · workers ${c(lambda n: not n.endswith('controller')):.2f} · today ${sum(h.get('cost_today',0) for h in A.values()):.2f}   {DIM}(from pi session jsonl; tick refreshes working agents){OFF}")
+        H=next((h for n,h in A.items() if n.endswith("controller")),{}); fs=load_state().get("flush",{})   # (008) controller context line
+        try: fl=open(FLUSHED).read().split()[0][11:16]
+        except Exception: fl="—"
+        try: cn=json.load(open(COMPS)).get("count",0) if fs.get("ext") else H.get("compactions",0)
+        except Exception: cn=H.get("compactions",0)
+        print(f" CTX   controller ctx {H.get('ctx_pct','?')}% · compactions {cn} · flushed {fl} · extension {'alive' if fs.get('ext') else 'absent (tick fallback)'}")
+elif cmd=="plist":   # launchd unit for the tick (§2.6); env verified by spike 005
+    home=os.path.expanduser("~"); lab=args[0]
+    print(f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>{lab}</string>
+<key>ProgramArguments</key><array><string>/bin/bash</string><string>-c</string><string>exec "$HOME/.local/bin/controlroom" tick --root "{ROOT}"</string></array>
+<key>WorkingDirectory</key><string>{ROOT}</string>
+<key>StartInterval</key><integer>60</integer>
+<key>RunAtLoad</key><true/>
+<key>ThrottleInterval</key><integer>30</integer>
+<key>ProcessType</key><string>Background</string>
+<key>EnvironmentVariables</key><dict>
+  <key>HOME</key><string>{home}</string>
+  <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin:{home}/.local/bin:/opt/homebrew/bin</string>
+  <key>HERDR_ENV</key><string>1</string>
+  <key>HERDR_WORKSPACE_ID</key><string>{WS or ""}</string>
+</dict>
+<key>StandardOutPath</key><string>{ROOT}/logs/tick.log</string>
+<key>StandardErrorPath</key><string>{ROOT}/logs/tick.log</string>
+</dict></plist>''')
+elif cmd=="event":   # (008) controlroom event <kind> [arg] — see event() above
+    if not args: die("usage: controlroom event <flush-requested <pct> | compaction <tokensBefore> | ext-error <msg> | …> [arg]")
+    event(args[0],args[1] if len(args)>1 else "",args[2] if len(args)>2 else "ext")   # (012) 3rd arg = source (ext | manual | tick)
+else: print(f"cr5: unknown {cmd}",file=sys.stderr); sys.exit(1)
+PY
+}
+tick_label(){ echo "io.controlroom.tick.$(python3 -c 'import hashlib,sys;print(hashlib.sha1(sys.argv[1].encode()).hexdigest()[:8])' "$ROOT")"; }
+tick_install(){   # idempotent: write plist, bootstrap if not loaded. Linux / no launchd → --loop fallback hint
+  cr5 auto init
+  [ -s "$ROOT/logs/.controller" ] || { p=$(herdr agent list 2>/dev/null | WS="$WS" python3 -c 'import json,sys,os
+ws=os.environ.get("WS"); print(next((a["pane_id"] for a in json.load(sys.stdin)["result"]["agents"] if a.get("name")=="controller" and (not ws or a.get("workspace_id")==ws)),""))' 2>/dev/null); [ -n "$p" ] && echo "$p" > "$ROOT/logs/.controller" && echo "controller pane → $p (logs/.controller)"; }   # (006) L012: pin the controller by pane id, once, by name
+  if [ "$(uname)" != Darwin ]; then echo "tick      no launchd here — run: controlroom tick --loop (statusbar starts it on non-macOS)"; return 0; fi
+  lab=$(tick_label); mkdir -p "$HOME/.config/controlroom/launchd"; PL="$HOME/.config/controlroom/launchd/$lab.plist"
+  cr5 plist "$lab" > "$PL"
+  if perl -e 'alarm 10; exec @ARGV' -- launchctl print "gui/$(id -u)/$lab" >/dev/null 2>&1; then echo "tick      launchd $lab already loaded (60 s) · $PL"
+  else perl -e 'alarm 15; exec @ARGV' -- launchctl bootstrap "gui/$(id -u)" "$PL" 2>&1 && echo "tick      launchd $lab bootstrapped (60 s) · $PL"; fi
+}
+tick_uninstall(){
+  lab=$(tick_label); PL="$HOME/.config/controlroom/launchd/$lab.plist"
+  perl -e 'alarm 15; exec @ARGV' -- launchctl bootout "gui/$(id -u)/$lab" 2>/dev/null && echo "tick      $lab booted out" || echo "tick      $lab was not loaded"
+  rm -f "$PL" && echo "          removed $PL"
+}
+# ---- end 005 ----
+
+# ---- memory (004) ----  docs/briefs/memory/{DECISIONS,LESSONS}.md — append-only, every line `- D### date **slug** — text ← source`
+# mem_py <decide|lesson|supersede|memory|land|init|strip> [args…]; data via argv/env (stdin is the heredoc). Design: docs/design/durable-controlroom.md §1, §5.
+mem_py(){ ROOT="$ROOT" python3 - "$@" <<'PY'
+import os,re,sys,glob,time,datetime
+root=os.environ["ROOT"]; mem=os.path.join(root,"docs/briefs/memory"); today=datetime.date.today().isoformat()
+cmd,args=sys.argv[1],sys.argv[2:]; FILE={"D":"DECISIONS.md","L":"LESSONS.md"}; BUDGET={"D":40,"L":30}
+def die(m): print(m,file=sys.stderr); sys.exit(1)
+def path(k): return os.path.join(mem,FILE[k])
+def lines(k): return open(path(k)).read().splitlines() if os.path.exists(path(k)) else []
+def active(k): return [l for l in lines(k) if re.match(r"^- [DL]\d{3} ",l)]
+def proposed():
+    p=os.path.join(mem,"proposed.md"); return [l for l in (open(p).read().splitlines() if os.path.exists(p) else []) if re.match(r"^- P\d{3} ",l)]
+def over(D,L): return [f"{FILE[k][:-3]} {len(v)}/{BUDGET[k]}" for k,v in (("D",D),("L",L)) if len(v)>BUDGET[k]]
+def age(t): d=time.time()-t; return f"{int(d//60)}m" if d<3600 else (f"{d/3600:.1f}h" if d<86400 else f"{d/86400:.1f}d")
+def opt(name): return args[args.index(name)+1] if name in args and args.index(name)+1<len(args) else None
+def check_src(src,chat_ok=False):   # (012) 011 #8: THE source validator (dream --check shells out to it) → None when it resolves, else why not
+    if src.startswith("chat:"): return None if chat_ok else "chat: source — the dreamer never saw the chat (decide/lesson: pass --chat-ok)"
+    m=re.match(r'([^#:\s"]+)(?:(#[^\s:"]+)|:"(.*)"|:(\d+))?$',src)
+    if not m: return f"unparseable source `{src}`"
+    p=os.path.normpath(os.path.join(root,m.group(1)))
+    if not p.startswith(root+os.sep) or not os.path.isfile(p): return f"not a file under the repo: {m.group(1)}"
+    t=open(p,errors="replace").read()
+    if m.group(2) and m.group(2)[1:] not in {re.sub(r"[^\w\- ]","",h.replace("`","").strip().lower()).replace(" ","-") for h in re.findall(r"^#+\s+(.*)$",t,re.M)}: return f"anchor {m.group(2)} is not a heading in {m.group(1)}"
+    if m.group(3) is not None and m.group(3) not in t: return f'phrase "{m.group(3)}" not in {m.group(1)}'
+    if m.group(4) and int(m.group(4))>t.count("\n")+1: return f"line {m.group(4)} beyond end of {m.group(1)}"
+def add(k,text,src,slug):
+    if not src: die('refused: no source, no line — add --from <repo/path[#anchor|:line|:"phrase"]> (or --from chat:<ISO-ts> --chat-ok)')
+    e=check_src(src,"--chat-ok" in args); e and die("refused: "+e)
+    if len(text)>160: die(f"refused: one-liner is {len(text)} chars (max 160)")
+    if "\n" in text or "|" in text: die("refused: one-liner must be one line without `|` (the line grammar)")   # (012) 011 #8
+    if not os.path.isdir(mem): die("no docs/briefs/memory/ — run: controlroom init")
+    slug=slug or "-".join(re.sub(r"[^a-z0-9]+","-",text.lower()).strip("-").split("-")[:4])[:32]
+    ids=[int(m.group(1)) for l in lines(k) for m in [re.match(r"^- (?:~~)?%s(\d{3}) "%k,l)] if m]
+    line=f"- {k}{max(ids,default=0)+1:03d} {today} **{slug}** — {text} ← {src}"
+    with open(path(k),"a") as f: f.write(line+"\n")
+    print(line)
+SEED=[("no-timeout-binary","no `timeout`/`gtimeout` on this Mac; wrap anything that can hang in `perl -e 'alarm N; exec @ARGV' --`; don't brew-install coreutils","docs/briefs/results/001-mana-install.md#6-gotchas"),
+ ("caffeinate-pipelines","laptop sleep kills long jobs and workers' API calls mid-write; run pipelines under `caffeinate -i`, tell workers to save partials early",'README.md:"lost a step to this once"'),
+ ("frontmatter-quote-colon","a prompt-template frontmatter value containing `: ` breaks YAML and pi silently skips the template — quote it; `/reload` picks it up",'skills/controlroom/SKILL.md:"must be quoted"'),
+ ("heredoc-eats-stdin","piping JSON into `python3 - <<EOF` loses stdin to the heredoc — pass data via an env var (or argv)",'skills/controlroom/SKILL.md:"loses stdin"'),
+ ("timebox-local-compute","a worker sat 26 h on one unbounded call at 98 % CPU while the strip said `working` — briefs must time-box compute and demand partial outputs",'skills/controlroom/SKILL.md:"blocked 26 h"'),
+ ("hidden-subagents-die","hidden pi subagents are killed after ~3 min without output — use Herdr panes for read-heavy tasks",'README.md:"killed after ~3 minutes"'),
+ ("toasts-unreliable","Herdr toasts default to off and are transient; the strip and `logs/agents.log` are the reliable signals",'README.md:"default to *off*"')]
+if cmd in ("decide","lesson"):
+    pos=[a for i,a in enumerate(args) if not a.startswith("--") and (i==0 or args[i-1] not in ("--from","--slug"))]
+    if not pos: die(f'usage: controlroom {cmd} "<one-liner>" --from <source> [--slug s]')
+    add("D" if cmd=="decide" else "L",pos[0],opt("--from"),opt("--slug"))
+elif cmd=="supersede":
+    if len(args)<2 or args[0][:1] not in FILE or args[1][:1] not in FILE: die("usage: controlroom supersede <ID> <byID>   (IDs like D007 / L003)")
+    old,new=args[:2]
+    if not any(l.startswith(f"- {new} ") for l in lines(new[0])): die(f"{new} not found — it must exist before it can supersede")
+    out,hit=[],None
+    for l in lines(old[0]):
+        if l.startswith(f"- {old} "): body,_,src=l[2:].rpartition(" ← "); hit=l; l=f"- ~~{body}~~ superseded-by {new} ← {src}"
+        out.append(l)
+    if not hit: die(f"{old} not found or already struck")
+    open(path(old[0]),"w").write("\n".join(out)+"\n"); os.makedirs(os.path.join(mem,"archive"),exist_ok=True)
+    with open(os.path.join(mem,"archive",today[:7]+".md"),"a") as f: f.write(f"{hit}  · superseded-by {new} {today}\n")
+    print(f"{old} struck, superseded-by {new} · archived to memory/archive/{today[:7]}.md")
+elif cmd=="memory":
+    if "--check-src" in args: e=check_src(opt("--check-src") or ""); print(e or ""); sys.exit(1 if e else 0)   # (012) used by dream --check
+    if not os.path.isdir(mem): die("no docs/briefs/memory/ — run: controlroom init")
+    D,L,P=active("D"),active("L"),proposed(); ov=over(D,L)
+    counts=f"{len(D)} decisions · {len(L)} lessons · {len(P)} proposed"+(f"   ⚠ over budget: {', '.join(ov)}" if ov else "")
+    if "--counts" in args: print(counts); sys.exit()
+    if "--unsourced" in args: print("\n".join(l for l in D+L if "← chat:" in l) or "(none unsourced)"); sys.exit()
+    if "--decisions" in args: print("\n".join(D) or "(no decisions)"); sys.exit()
+    if "--lessons" in args: print("\n".join(L) or "(no lessons)"); sys.exit()
+    room=66; kL=min(len(L),max(room//2,room-len(D))); kD=min(len(D),room-kL)   # ≤ 70 lines total
+    print(counts); print("\n".join(D[len(D)-kD:]) or "(no decisions)")
+    if kD<len(D): print(f"  … {len(D)-kD} older decisions hidden (controlroom memory --decisions)")
+    print(); print("\n".join(L[len(L)-kL:]) or "(no lessons)")
+    if kL<len(L): print(f"  … {len(L)-kL} older lessons hidden (controlroom memory --lessons)")
+elif cmd=="strip":   # one line for status_text; silent when memory/ is absent
+    if not os.path.isdir(mem): sys.exit()
+    D,L=active("D"),active("L"); mts=[os.path.getmtime(path(k)) for k in "DL" if os.path.exists(path(k))]; dr=glob.glob(os.path.join(mem,"dreams","*.md"))
+    print(f" MEMORY  {len(D)} decisions · {len(L)} lessons · newest {age(max(mts))+' ago' if mts else '—'} · {len(proposed())} proposed · last dream {age(max(map(os.path.getmtime,dr))) if dr else 'never'}"+("   \033[33m⚠ over budget\033[0m" if over(D,L) else ""))
+elif cmd=="init":
+    made=[]
+    for d in (mem,os.path.join(mem,"archive"),os.path.join(mem,"dreams")):
+        if not os.path.isdir(d): os.makedirs(d); made.append(os.path.basename(d)+"/")
+    for n,h in (("DECISIONS.md","what we chose · `controlroom decide \"…\" --from <source>`"),("LESSONS.md","what bit us and the rule we adopted · `controlroom lesson \"…\" --from <source>`"),("proposed.md","written by `controlroom dream`; promote or reject — never edit by hand")):
+        p=os.path.join(mem,n)
+        if not os.path.exists(p): open(p,"w").write(f"# {n[:-3]} — {h}. Append-only; grammar: `- {n[0].upper()}### YYYY-MM-DD **slug** — one-liner ← source`\n\n"); made.append(n)
+    v=os.path.join(mem,".version"); os.path.exists(v) or open(v,"w").write("1\n")
+    print("memory/   "+("created "+" ".join(made) if made else "present (skipped)"))
+    if "--no-seed" not in args:
+        have={m.group(1) for l in lines("L") for m in [re.search(r"\*\*([^*]+)\*\*",l)] if m}; new=[s for s in SEED if s[0] not in have]
+        for slug,text,src in new: add("L",text,src,slug)
+        print(f"          seeded {len(new)} L-lines from skills/controlroom/SKILL.md Gotchas + README (--no-seed to skip)" if new else "          LESSONS already seeded (skipped)")
+elif cmd=="land":
+    sp=os.path.join(root,"docs/briefs/STATUS.md")
+    if not os.path.exists(sp): die("no docs/briefs/STATUS.md")
+    src=open(sp).read().splitlines(); out,moved,dropped,sec,i,filt=[],[],[],"",0,set(args)
+    while i<len(src):
+        l=src[i]
+        if l.startswith("## "): sec=l[3:].strip().lower()
+        if sec.startswith("workers") and l.startswith("|"):
+            c=[x.strip() for x in l.strip().strip("|").split("|")]
+            if len(c)>=5 and c[3].lower().startswith("done") and "](" in c[4] and (not filt or filt&{c[1],c[2]}): moved.append(c); i+=1; continue
+        if sec.startswith("decisions waiting") and re.match(r"^\d+\.\s*~~",l):
+            j=i+1
+            while j<len(src) and src[j].strip() and not re.match(r"^\d+\.",src[j]) and not src[j].startswith("## "): j+=1
+            dropped.append(" ".join(x.strip() for x in src[i:j])); i=j; continue
+        out.append(l); i+=1
+    if not moved and not dropped: print("land: nothing to move (no `done` rows with a result link, no struck decisions)"); sys.exit()
+    n=0; sec=""
+    for k,l in enumerate(out):   # renumber the remaining decisions
+        if l.startswith("## "): sec=l[3:].lower(); n=0
+        if sec.startswith("decisions waiting") and re.match(r"^\d+\.",l): n+=1; out[k]=re.sub(r"^\d+\.",f"{n}.",l)
+    if moved:
+        if not any(l.strip()=="## Landed" for l in out): out+=["","## Landed","| when | brief | worker | result | one-liner |","|---|---|---|---|---|"]
+        at=next(k for k,l in enumerate(out) if l.strip()=="## Landed")+3   # after header + separator → newest first
+        rows=[]
+        for c in moved: res,_,one=c[4].partition(" — "); rows.append(f"| {datetime.date.today():%m-%d} | {c[2]} | {c[1]} | {res} | {one or '—'} |")
+        out[at:at]=rows
+    cites=[l.split()[1] for k in "DL" for l in active(k) if "STATUS.md" in l.rpartition(" ← ")[2]]   # (012) 011 #9
+    if cites: print(f"⚠ {', '.join(cites)} cite STATUS.md — the board is being rewritten; re-point them to memory/archive/{today[:7]}.md (dream --check flags dead phrases)")
+    tmp=sp+".tmp"; open(tmp,"w").write("\n".join(out)+"\n"); os.replace(tmp,sp)
+    if dropped:   # the struck board item is the source a D-line cites; keep its text — (012) 011 #9: always, even without memory/
+        os.makedirs(os.path.join(mem,"archive"),exist_ok=True)
+        with open(os.path.join(mem,"archive",today[:7]+".md"),"a") as f: f.write("".join(f"- board {today} (dropped by land): {d}\n" for d in dropped))
+    for c in moved: print(f"landed  {c[1]:<18} {c[2]}  ({c[3]})")
+    for d in dropped: print(f"dropped decided: {d[:120]}")
+else: die(f"mem_py: unknown {cmd}")
+PY
+}
+# ---- end memory ----
+
+# ---- dream (007) ----  propose-only consolidation: prompts/dream.md → memory/.dream-brief.md → `dreamer-N` worker (via launch) · `dream --check` (no LLM) · `promote` · `reject`. Design §3.
+# dream_py <render|check|promote|reject> [args…]; data via argv/env (stdin is the heredoc). State: memory/.dream-pre.json (stamp, since, max P id, guarded mtimes) written at render, read by check.
+dream_py(){ ROOT="$ROOT" SELF="$0" LOG="$LOG" python3 - "$@" <<'PY'
+import os,re,sys,glob,json,time,subprocess,datetime as dt
+ROOT=os.environ["ROOT"]; SELF=os.environ["SELF"]; MEM=os.path.join(ROOT,"docs/briefs/memory"); DR=os.path.join(MEM,"dreams"); PROP=os.path.join(MEM,"proposed.md"); PRE=os.path.join(MEM,".dream-pre.json")
+cmd,args=sys.argv[1],sys.argv[2:]; NOW=dt.datetime.now(); today=NOW.strftime("%Y-%m-%d")
+GUARD=["docs/briefs/memory/DECISIONS.md","docs/briefs/memory/LESSONS.md","docs/briefs/STATUS.md"]+sorted(os.path.relpath(f,ROOT) for f in glob.glob(os.path.join(ROOT,"docs/briefs/results/*.md")))
+LINE=re.compile(r"^- (~~)?([DLP]\d{3}) (\d{4}-\d\d-\d\d) \*\*([^*]+)\*\* — (.*?)(?:~~ ([^←]*?))? ← (.*)$")
+def die(m): print(m,file=sys.stderr); sys.exit(1)
+def rd(p): return open(p).read() if os.path.exists(p) else ""
+def mt(rel): p=os.path.join(ROOT,rel); return os.path.getmtime(p) if os.path.exists(p) else None
+def opt(k,d=None): return args[args.index(k)+1] if k in args and args.index(k)+1<len(args) else d
+def reports(): return sorted(glob.glob(os.path.join(DR,"*.md")),key=os.path.getmtime)
+def parse(l):
+    m=LINE.match(l); return m and dict(struck=bool(m.group(1)),id=m.group(2),date=m.group(3),slug=m.group(4),text=m.group(5),src=m.group(7).strip())
+def allp(): return [d for f in ("DECISIONS.md","LESSONS.md","proposed.md") for d in map(parse,rd(os.path.join(MEM,f)).splitlines()) if d]
+def plines(): return [d for d in map(parse,rd(PROP).splitlines()) if d and d["id"][0]=="P" and not d["struck"]]
+def check_src(src):   # → None when the citation resolves, else why not. (012) 011 #8: one validator — mem_py's check_src, via `controlroom memory --check-src`
+    return subprocess.run([SELF,"memory","--check-src",src],capture_output=True,text=True,env=dict(os.environ,ROOT=ROOT),cwd=ROOT).stdout.strip() or None
+def strike(pid,tag):   # strike one active P-line in proposed.md in place → the parsed line, or None
+    out,hit=[],None
+    for l in rd(PROP).splitlines():
+        d=parse(l)
+        if d and d["id"]==pid and not d["struck"]: hit=d; l=f"- ~~{pid} {d['date']} **{d['slug']}** — {d['text']}~~ {tag} ← {d['src']}"
+        out.append(l)
+    if hit: tmp=PROP+".tmp"; open(tmp,"w").write("\n".join(out)+"\n"); os.replace(tmp,PROP)
+    return hit
+def note(t,b,s="request"): subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",t,b,s],env=dict(os.environ,ROOT=ROOT),timeout=20)
+if cmd=="render":   # render <reason> <since|7d|""> → memory/.dream-brief.md + .dream-pre.json; prints "<brief> <stamp> <since>"
+    reason=args[0] or "manual"; since=args[1] if len(args)>1 else ""
+    if re.match(r"^\d+d$",since): s=NOW-dt.timedelta(days=int(since[:-1]))
+    elif since: s=dt.datetime.strptime(since[:16].replace(" ","T"),"%Y-%m-%dT%H:%M")
+    else: r=reports(); s=dt.datetime.fromtimestamp(os.path.getmtime(r[-1])) if r else NOW-dt.timedelta(days=7)
+    since=s.strftime("%Y-%m-%dT%H:%M"); stamp=NOW.strftime("%Y-%m-%d-%H%M")
+    tp=os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(SELF)),"..","prompts","dream.md")); t=rd(tp) or die(f"template not found: {tp}")
+    t=re.sub(r"\A---\n.*?\n---\n","",t,flags=re.S)   # drop the pi frontmatter; the CLI fills the placeholders (it knows ROOT, the last-dream mtime and the stamp; a model guessing them would break --check)
+    for k,v in (("{ROOT}",ROOT),("{reason}",reason),("{since}",since),("{stamp}",stamp)): t=t.replace(k,v)
+    t=re.sub(r"\$\{1:-[^}]*\}",reason,t); t=re.sub(r"\$\{2:-[^}]*\}",since,t)
+    if not os.path.isdir(MEM): die("no docs/briefs/memory/ — run: controlroom init --memory-only")
+    os.makedirs(DR,exist_ok=True); bp=os.path.join(MEM,".dream-brief.md")
+    open(bp,"w").write(f"<!-- rendered by `controlroom dream` {NOW:%Y-%m-%d %H:%M} from prompts/dream.md (stamp {stamp}) — do not edit; re-run controlroom dream -->\n"+t)
+    json.dump(dict(stamp=stamp,reason=reason,since=since,started=time.time(),p_max=max([int(d["id"][1:]) for d in allp() if d["id"][0]=="P"]+[0]),mtimes={g:mt(g) for g in GUARD}),open(PRE,"w"))
+    print(f"{os.path.relpath(bp,ROOT)} {stamp} {since}")
+elif cmd=="check":   # newest dreams/*.md + proposed.md, no LLM: citations resolve · DONE dream · count matches · no dup slug · ≤10 · guarded files unmoved (warn)
+    r=reports() or die("dream --check: no report in docs/briefs/memory/dreams/"); rep=r[-1]; rt=rd(rep); rel=os.path.relpath(rep,ROOT); pre=json.loads(rd(PRE) or "{}"); fails,warn=[],[]
+    if not re.search(r"^\s*DONE dream\s*$",rt,re.M): fails.append(f"{rel}: no `DONE dream` line")
+    pmax=pre.get("p_max") if pre.get("stamp","∅") in os.path.basename(rep) else None   # P-lines of *this* run: ids above the pre-render max; fallback: same date as the report
+    sec=lambda n: (re.search(r"^## "+n+r"[^\n]*\n(.*?)(?=^## |\Z)",rt,re.M|re.S) or [None,""])[1]
+    echoed=set(re.findall(r"^- (?:~~)?(P\d{3}) ",sec("Proposed"),re.M)); mine=lambda d: int(d["id"][1:])>pmax if pmax is not None else d["id"] in echoed   # older report: the IDs it echoes
+    run=[d for d in allp() if d["id"][0]=="P" and mine(d)]; new=[d for d in run if not d["struck"]]   # run = this dream's lines incl. already promoted/rejected; new = still open
+    m=re.search(r"^## Proposed \((\d+)\)",rt,re.M)
+    if not m: fails.append(f"{rel}: no `## Proposed (N)` heading")
+    elif int(m.group(1))!=len(run): fails.append(f"{rel}: heading says {m.group(1)} proposed, proposed.md gained {len(run)} P-line(s) ({', '.join(d['id'] for d in run) or 'none'})")
+    if len(run)>10: fails.append(f"{len(run)} P-lines this run (max 10)")
+    S={}
+    for d in allp(): S.setdefault(d["slug"],[]).append(d["id"])
+    for d in new:
+        e=check_src(d["src"]); e and fails.append(f"{d['id']}: {e}")
+        o=[i for i in S[d["slug"]] if i!=d["id"]]; o and fails.append(f"{d['id']}: duplicate slug **{d['slug']}** (also {', '.join(o)})")
+        if not re.match(r"^\[[DL]\] ",d["text"]): warn.append(f"{d['id']}: no [D]/[L] tag — promote will need --kind")
+        if len(d["text"])>165: fails.append(f"{d['id']}: one-liner is {len(d['text'])} chars (max 160 + tag)")
+    for src in sorted(set(re.findall(r'← ([^\s"#:]+(?:#[^\s:"]+|:"[^"]*"|:\d+)?)',rt))):   # citations inside the report itself (P-lines echoed, merge/unsure bullets)
+        e=check_src(src); e and fails.append(f"{rel}: {e}")
+    cnt=lambda n: len([l for l in sec(n).splitlines() if re.match(r"^\s*(?:[-*]|\d+\.)\s+\S",l) and not re.match(r"^\s*(?:[-*]|\d+\.)\s+\(?(?:none|—|n/a|nothing)\b",l,re.I)])
+    for g,t0 in pre.get("mtimes",{}).items():
+        t1=mt(g)
+        if (t1 or 0)!=(t0 or 0): warn.append(f"moved during the dream: {g} ({'deleted' if t1 is None else 'modified '+dt.datetime.fromtimestamp(t1).strftime('%H:%M')}) — the dreamer must not edit it; confirm it was you")
+    warn+=[f"new during the dream: {g}" for g in GUARD if pre.get("mtimes") and g not in pre["mtimes"]]
+    dur=(os.path.getmtime(rep)-pre["started"])/60 if pre.get("started") and pmax is not None else None
+    if dur and dur>15: warn.append(f"took {dur:.0f} min (time-box 15)")
+    for d in new: print(f"  {d['id']} **{d['slug']}** — {d['text'][:90]} ← {d['src']}")
+    for w in warn: print(f"  ⚠ {w}")
+    summary=f"{len(run)} proposed, {cnt('Merge candidates')} merges, {cnt('Landed candidates')} landed-candidates"+(f" ({len(new)} still open)" if len(new)!=len(run) else "")
+    if fails:
+        print(f"dream --check FAILED · {rel} · {len(fails)} problem(s):"); [print(f"  ✗ {f}") for f in fails]
+        link=any(k in f for f in fails for k in ("not found","not in ","not a heading","unparseable","beyond end"))
+        note("dream report has dead links" if link else "dream report failed --check",f"{len(fails)} problem(s) in {rel} — controlroom dream --check"); sys.exit(1)
+    if f"dream ok: {summary} · {rel}" not in rd(os.environ["LOG"]): open(os.environ["LOG"],"a").write(f"[{NOW:%m-%d %H:%M}] dream ok: {summary} · {rel}\n")   # re-runs don't re-log
+    print(f"dream ok: {summary} · {rel}"+(f" · {dur:.0f} min" if dur is not None else "")+" → controlroom promote P### | reject P### [why]")
+elif cmd=="promote":   # promote P### [P### …] | --all [--kind D|L]: [D]/[L] tag picks the file; --kind = default for untagged (and, with --all, a filter)
+    kind=opt("--kind"); ids=[a for a in args if re.match(r"^P\d{3}$",a)]
+    if "--all" in args: ids=[d["id"] for d in plines()]
+    if not ids or (kind and kind not in "DL"): die("usage: controlroom promote P### [P### …] | --all [--kind D|L]   (nothing to promote)" if not ids else "--kind must be D or L")
+    bad=0
+    for pid in ids:
+        d=next((x for x in plines() if x["id"]==pid),None); bad+=1
+        if not d: print(f"{pid}: not found or already struck"); continue
+        m=re.match(r"^\[([DL])\]\s*(.*)$",d["text"]); k=kind if kind and "--all" not in args else ((m.group(1) if m else None) or kind); text=m.group(2) if m else d["text"]   # named + --kind overrides the tag
+        if "--all" in args and kind and m and m.group(1)!=kind: continue
+        if not k: print(f"{pid}: no [D]/[L] tag — pass --kind D|L"); continue
+        dup=[x["id"] for x in allp() if x["slug"]==d["slug"] and x["id"][0] in "DL" and not x["struck"]]
+        if dup: print(f"{pid}: refused — slug **{d['slug']}** already in memory as {', '.join(dup)} (reject it, or supersede)"); continue
+        r=subprocess.run([SELF,"decide" if k=="D" else "lesson",text,"--from",d["src"],"--slug",d["slug"]],capture_output=True,text=True,env=dict(os.environ,ROOT=ROOT),cwd=ROOT)
+        if r.returncode or not r.stdout.startswith("- "): print(f"{pid}: {(r.stderr or r.stdout).strip()}"); continue
+        nid=r.stdout.split()[1]; strike(pid,f"promoted-as {nid}"); print(f"{pid} → {r.stdout.strip()}"); bad-=1
+    sys.exit(1 if bad and "--all" not in args else 0)   # named P-lines that were not promoted → rc 1; --all skips are not failures
+elif cmd=="reject":   # reject P### [reason]: strike in place + copy to archive/YYYY-MM.md
+    pid=args[0] if args and re.match(r"^P\d{3}$",args[0]) else die("usage: controlroom reject P### [reason]"); reason=" ".join(args[1:]) or "no reason given"
+    d=strike(pid,f"rejected: {reason}") or die(f"{pid}: not found or already struck")
+    os.makedirs(os.path.join(MEM,"archive"),exist_ok=True)
+    with open(os.path.join(MEM,"archive",today[:7]+".md"),"a") as f: f.write(f"- {pid} {d['date']} **{d['slug']}** — {d['text']} ← {d['src']}  · rejected {today}: {reason}\n")
+    print(f"{pid} rejected: {reason} · archived to memory/archive/{today[:7]}.md")
+else: die(f"dream_py: unknown {cmd}")
+PY
+}
+# ---- end dream ----
+
 case "$CMD" in
   __lib__) return 0 2>/dev/null || exit 0 ;;   # sourced for verify()
-  verify) verify "$1" ;;
+  verify) [ -n "${1:-}" ] || { echo "usage: controlroom verify <agent>"; exit 2; }; verify "$1" ;;   # (012) 011 #16
   status) status_text ;;
   detail) if [ -f "$DETAIL_FLAG" ]; then rm -f "$DETAIL_FLAG"; echo "detail: off"; else touch "$DETAIL_FLAG"; echo "detail: on"; fi ;;
   detail-on) touch "$DETAIL_FLAG" ;;
   detail-off) rm -f "$DETAIL_FLAG" ;;
   statusbar)   # curses pager: keeps your scroll position, refreshes only after 15 s of no input. q/ctrl+c quits.
+    [ "$(uname)" != Darwin ] && [ -d "$ROOT/docs/briefs" ] && { "$0" tick --loop >/dev/null 2>&1 & }   # no launchd → tick loop rides along with the pager (005)
     exec controlroom-pager ;;
   init)
+    MEMFLAGS=""; for a in "$@"; do case "$a" in --no-seed|--memory-only) MEMFLAGS="$MEMFLAGS $a";; esac; done   # memory (004)
+    case "$MEMFLAGS" in *memory-only*) mem_py init $MEMFLAGS; exit $?;; esac                                # memory (004): scaffold only, no pane/agent changes
     need_herdr; ROWS=9; [ "${1:-}" = "--rows" ] && ROWS=${2:-9}
-    herdr agent rename "$HERDR_PANE_ID" controller >/dev/null 2>&1 && echo "agent → controller"
+    out=$(herdr agent rename "$HERDR_PANE_ID" controller 2>&1) && echo "agent → controller" || case "$out" in   # (012) 009 bug 1: say so, and take controller-<ws> (names are global — L012; automations use the pane id)
+      *agent_name_taken*) herdr agent rename "$HERDR_PANE_ID" "controller-$WS" >/dev/null 2>&1 && echo "agent → controller-$WS (global name 'controller' is held by another room — pane id still pins this controller)" || echo "agent rename failed: ${out:0:140}";;
+      *) echo "agent rename failed: ${out:0:140}";; esac
     herdr tab rename "$HERDR_TAB_ID" "CONTROLLER" >/dev/null 2>&1 && echo "tab → CONTROLLER"
     mkdir -p "$ROOT/docs/briefs/results"
     [ -f "$ROOT/docs/briefs/STATUS.md" ] || cat > "$ROOT/docs/briefs/STATUS.md" <<EOF
@@ -150,25 +938,38 @@ case "$CMD" in
 Only **blocked** needs a human. New work → \`docs/briefs/<X>.md\` (objective · inputs · constraints · deliverable · where to write) → ask controller to launch.
 Results land in \`docs/briefs/results/\`; chat is ephemeral, files are the memory.
 EOF
-    # status strip: split down, then shrink the new pane to ROWS
+    # status strip: split down, then shrink the new pane to ROWS (idempotent: skipped when this workspace already has a pane labelled "status" (005))
+    have=$(herdr pane list 2>/dev/null | WS="$WS" python3 -c 'import json,sys,os
+d=json.load(sys.stdin)["result"]; ps=d.get("panes",d); ws=os.environ.get("WS","")
+print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status" and str(p.get("pane_id","")).startswith(ws+":")),""))' 2>/dev/null)
+    if [ -n "$have" ]; then echo "strip  → $have (unchanged)"; else
     pane=$(herdr pane split --current --direction down --ratio 0.5 --cwd "$ROOT" --no-focus 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
     sleep 2; herdr pane rename "$pane" status >/dev/null 2>&1
     total=$(herdr pane layout --pane "$HERDR_PANE_ID" 2>/dev/null | python3 -c 'import json,sys; l=json.load(sys.stdin)["result"]["layout"]; print(l["area"]["height"])')
     frac=$(python3 -c "print(max(0.05, min(0.5, 1 - ($ROWS+1)/$total)))")
     herdr pane resize --pane "$pane" --direction down --amount "$frac" >/dev/null 2>&1
     herdr pane run "$pane" "controlroom statusbar" >/dev/null 2>&1 && echo "status strip → pane $pane ($ROWS rows)"
+    fi
+    mem_py init $MEMFLAGS   # memory (004): docs/briefs/memory/ + LESSONS seed, idempotent
+    echo "$HERDR_PANE_ID" > "$ROOT/logs/.controller"   # (006) automations prompt this pane (L012: by id, not by the global name)
+    tick_install            # tick (005): AUTOMATIONS.md + launchd unit, idempotent; first tick re-arms watch rows from STATUS.md
+    cr5 auto round          # (012) 010 §4(c): the standing 2 h round wake, once; Boot re-arms it if it is ever missing
     echo "board  → $ROOT/docs/briefs/STATUS.md"; echo "done. next: controlroom launch <name> docs/briefs/<X>.md"
     ;;
   launch)
-    need_herdr; NAME=${1:-}; BRIEF=${2:-}; LABEL=${3:-"worker: $NAME"}
-    [ -z "$NAME" ] || [ -z "$BRIEF" ] && { echo "usage: controlroom launch <name> docs/briefs/<NNN-slug>.md [tab label]"; exit 2; }
+    need_herdr; FORCE=0; A1=""; A2=""; A3=""
+    for a in "$@"; do if [ "$a" = --force ]; then FORCE=1; elif [ -z "$A1" ]; then A1=$a; elif [ -z "$A2" ]; then A2=$a; else A3=$a; fi; done   # (005) --force bypasses PAUSED
+    NAME=$A1; BRIEF=$A2; LABEL=${A3:-"worker: $NAME"}
+    [ -z "$NAME" ] || [ -z "$BRIEF" ] && { echo "usage: controlroom launch <name> docs/briefs/<NNN-slug>.md [tab label] [--force]"; exit 2; }
+    [ -f "$PAUSED" ] && [ "$FORCE" = 0 ] && { echo "paused since $(sed -n 's/.*since=\([^ ]*\).*/\1/p' "$PAUSED") — controlroom play, or --force"; exit 3; }
     pane=$(herdr tab create --workspace "$WS" --cwd "$ROOT" --no-focus 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])'); sleep 3
     herdr tab rename "${pane/:p/:t}" "$LABEL" >/dev/null 2>&1
     herdr agent start "$NAME" --kind pi --pane "$pane" --timeout 60000 >/dev/null 2>&1 || { echo "agent start failed in $pane"; exit 1; }
     sleep 2
-    herdr agent prompt "$NAME" "Read $BRIEF and execute it end to end. Work autonomously; do not ask questions unless truly blocked. Save deliverables where the brief specifies and write the final summary to docs/briefs/results/ as the brief says. Save partial results early and often. When done, reply with the single line: DONE $NAME" >/dev/null 2>&1
-    nohup "$0" watch "$NAME" >/dev/null 2>&1 &
-    note "launched $NAME" "$BRIEF in $pane" none; echo "$NAME → $pane ($LABEL), watcher armed"
+    PRE="Read"; [ -f "$ROOT/docs/briefs/memory/LESSONS.md" ] && PRE="Read docs/briefs/memory/LESSONS.md first (project lessons; treat as rules). Then read"   # memory (004)
+    herdr agent prompt "$NAME" "$PRE $BRIEF and execute it end to end. Work autonomously; do not ask questions unless truly blocked. Save deliverables where the brief specifies and write the final summary to docs/briefs/results/ as the brief says. Save partial results early and often. When done, reply with the single line: DONE $NAME" >/dev/null 2>&1
+    row=$(cr5 auto arm "$NAME" "integrate $(basename "$BRIEF" .md) when DONE" "launch $(date '+%m-%d %H:%M')")   # (005) watch row; the tick verifies/toasts and survives restarts
+    note "launched $NAME" "$BRIEF in $pane" none; echo "$NAME → $pane ($LABEL), ${row:-watch row NOT armed (ledger locked >10 s) — the tick re-arms it from STATUS.md once the board row says working}"   # (012)
     ;;
   watch)
     for a in "$@"; do (
@@ -191,8 +992,8 @@ except Exception: print("timeout")')
   resume)   # controlroom resume <agent> [extra instruction] — re-prompt a stopped worker and re-arm the watcher
     need_herdr; NAME=${1:-}; EXTRA=${2:-}; [ -z "$NAME" ] && { echo "usage: controlroom resume <agent> [note]"; exit 2; }
     herdr agent prompt "$NAME" "Resume exactly where you stopped (your previous call failed or was cut off). Check your persisted files and logs first; do not redo finished steps. Every number in your results file must come from your own outputs; if a step did not complete, say so plainly instead of estimating. Finish the brief and reply with the single line: DONE $NAME. $EXTRA" >/dev/null 2>&1
-    nohup "$0" watch "$NAME" >/dev/null 2>&1 &
-    note "resumed $NAME" "watcher re-armed" none; echo "$NAME resumed, watcher armed" ;;
+    row=$(cr5 auto arm "$NAME" "" "resume $(date '+%m-%d %H:%M')")   # (005) re-arm the watch row instead of spawning a watcher
+    note "resumed $NAME" "watch row re-armed" none; echo "$NAME resumed, ${row:-watch row armed}" ;;
   strip-restart)   # controlroom strip-restart — restart the status pager in the pane labelled "status" (after a frozen window / dead pager)
     need_herdr; pane=$(herdr pane list 2>/dev/null | python3 -c 'import json,sys
 d=json.load(sys.stdin)["result"]; ps=d.get("panes",d)
@@ -209,7 +1010,7 @@ for a in json.load(sys.stdin)["result"]["agents"]:
       v=$(verify "$a"); case "$v" in crashed|stalled) "$0" resume "$a" "$NOTE" >/dev/null; echo "resumed $a ($v)"; n=$((n+1));; esac
     done; echo "$n resumed" ;;
   watch-log)
-    f=$1; label=$2; until grep -qE 'END|DONE|rc=[0-9]' "$f" 2>/dev/null; do sleep 60; done
+    f=${1:-}; label=${2:-${1:-}}; [ -n "$f" ] || { echo "usage: controlroom watch-log <file> <label>"; exit 2; }; until grep -qE 'END|DONE|rc=[0-9]' "$f" 2>/dev/null; do sleep 60; done
     note "pipeline: $label finished" "$(tail -1 "$f")" ;;
   retire)   # controlroom retire <agent> [reason]  — close the worker's tab; session file stays resumable
     NAME=${1:-}; REASON=${2:-retired}; [ -z "$NAME" ] && { echo "usage: controlroom retire <agent|pane> [reason]"; exit 2; }
@@ -221,6 +1022,7 @@ print(f"{a['tab_id']} {a.get('agent_session',{}).get('value','')}" if a else "")
 PY
     read -r TAB SESS < /tmp/.cr_retire; [ -z "$TAB" ] && { echo "no agent $NAME"; exit 1; }
     herdr tab close "$TAB" >/dev/null 2>&1 && echo "retired $NAME ($TAB) — resume: pi --resume $SESS"
+    cr5 auto cancel "$NAME" >/dev/null 2>&1   # (005) watch row → cancelled
     note "retired $NAME" "$REASON · resume: $SESS" none
     [ -f "$ROOT/docs/briefs/STATUS.md" ] && ! grep -q '^## Retired' "$ROOT/docs/briefs/STATUS.md" && printf '\n## Retired workers (tab closed; session resumable)\n| agent | when | reason | resume |\n|---|---|---|---|\n' >> "$ROOT/docs/briefs/STATUS.md"
     [ -f "$ROOT/docs/briefs/STATUS.md" ] && printf '| %s | %s | %s | `pi --resume %s` |\n' "$NAME" "$(date '+%m-%d %H:%M')" "$REASON" "$SESS" >> "$ROOT/docs/briefs/STATUS.md" ;;
@@ -244,5 +1046,53 @@ PY
       if [ "$APPLY" = 1 ]; then "$0" retire "$n" "gc: idle ${age}h"; else echo "would retire $n (idle ${age}h)"; fi
     done < /tmp/.cr_gc
     [ "$APPLY" = 1 ] || echo "(dry run — add --apply)" ;;
-  *) sed -n 2,12p "$0" ;;
+  # ---- tick/health/pause (005) case arms ----
+  tick)   # controlroom tick [--once] [--dry-run] [--loop] [--root R] — one reconciler pass (launchd runs it every 60 s); --loop = fallback runner under caffeinate -i
+    LOOP=0; PASS=""
+    while [ $# -gt 0 ]; do case "$1" in --root) cd "$2" 2>/dev/null && ROOT=$2 && LOG="$ROOT/logs/agents.log"; shift 2;; --loop) LOOP=1; shift;; *) PASS="$PASS $1"; shift;; esac; done
+    [ -d "$ROOT/docs/briefs" ] || exit 0   # silent no-op outside a control room
+    if [ "$LOOP" = 1 ]; then
+      if command -v caffeinate >/dev/null 2>&1 && [ -z "${CR_CAFF:-}" ]; then CR_CAFF=1 exec caffeinate -i "$0" tick --root "$ROOT" --loop $PASS; fi
+      while true; do "$0" tick --root "$ROOT" $PASS; sleep 60; done
+    fi
+    cr5 tick $PASS ;;
+  health) cr5 health "$@" ;;
+  automations) cr5 auto list "$@" ;;   # (006) --all shows cancelled rows
+  pause) cr5 pause "$@" ;;
+  play) cr5 play ;;
+  tick-install) tick_install ;;
+  tick-uninstall) tick_uninstall ;;
+  lastline)   # controlroom lastline <agent> — last meaningful pane line (used by the strip detail and by health's stuck? check)
+    [ -n "${1:-}" ] || { echo "usage: controlroom lastline <agent>"; exit 2; }; herdr agent read "$1" --source visible --lines 50 --format text 2>/dev/null | python3 -c '
+import sys,re
+lines=[l.rstrip() for l in sys.stdin.read().splitlines() if l.strip() and not set(l.strip())<=set("\u2500\u2550-\u2502\u250c\u2510\u2514\u2518 ")]
+cmds=[l.strip() for l in lines if re.match(r"^\s*\$ ", l)]
+if cmds: print("$ "+re.sub(r"^\$\s*","",cmds[-1])[:140]); sys.exit()
+for l in reversed(lines):
+    if re.search(r"claude|anthropic|\(auto\)|^~/|ctrl\+o|Working \u2500", l): continue
+    print(l.strip()[:140]); break' ;;
+  # ---- end 005 case arms ----
+  # ---- automations (006) case arms ----
+  wake) cr5 auto wake "$@" ;;             # controlroom wake <when> "<instruction>" [--prompt|--no-prompt] [--repeat spec] — prompts the controller when due (default yes)
+  watch-path) cr5 auto watch-path "$@" ;;  # controlroom watch-path "<glob>" "<instruction>" [--prompt] — toast (default) when a newer file lands under the glob
+  cancel) cr5 auto cancel "$@" ;;         # controlroom cancel A### (or <agent> for its watch row)
+  # ---- end 006 case arms ----
+  # ---- memory (004) case arms ----
+  decide|lesson|supersede|memory|land) mem_py "$CMD" "$@" ;;   # see mem_py above · docs/design/durable-controlroom.md §1 §5
+  # ---- end memory (004) case arms ----
+  # ---- dream (007) case arms ----
+  dream)   # controlroom dream [--reason r] [--since ISO|Nd] [--here] | --check — render prompts/dream.md → memory/.dream-brief.md, launch dreamer-N (or print it with --here)
+    case " $* " in *" --check "*) dream_py check; exit $?;; esac
+    REASON=manual; SINCE=""; HERE=0
+    while [ $# -gt 0 ]; do case "$1" in --reason) REASON=$2; shift 2;; --since) SINCE=$2; shift 2;; --here) HERE=1; shift;; *) shift;; esac; done
+    read -r BRIEF STAMP SINCE < <(dream_py render "$REASON" "$SINCE"); [ -z "${BRIEF:-}" ] && exit 1
+    if [ "$HERE" = 1 ]; then cat "$ROOT/$BRIEF"; exit 0; fi
+    N=1; while herdr agent list 2>/dev/null | grep -q "\"name\": *\"dreamer-$N\""; do N=$((N+1)); done   # names are global (L012); first free dreamer-N
+    "$0" launch "dreamer-$N" "$BRIEF" "dreamer: $REASON" && cr5 auto arm "dreamer-$N" "dream --check, then promote/reject (report: memory/dreams/$STAMP.md)" "dream $(date '+%m-%d %H:%M')" >/dev/null && echo "dream $STAMP (since $SINCE) → dreamer-$N · when it says DONE: controlroom dream --check" ;;
+  promote|reject) dream_py "$CMD" "$@" ;;
+  # ---- end dream (007) case arms ----
+  # ---- compaction (008) case arms ----
+  event) cr5 event "$@" ;;   # controlroom event <kind> [arg] — called by extensions/controlroom.ts (flush-requested · compaction · ext-error) and by the tick fallback
+  # ---- end compaction (008) case arms ----
+  *) sed -n '2,/^set -u/{/^set -u/!p;}' "$0" ;;   # help = the header comment block, however long it grows
 esac
