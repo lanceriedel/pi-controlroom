@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 10-28 10:45 — Lance's w9 strip showed `controller $0.00 · ctx ?%`: init had renamed its controller `controller-<ws>` (012) but strip/controller() only matched `*controller`. Fixed (`is_ctl`, e22064f); CTX now reads the pinned pane's health; wB pin written (`logs/.controller`). `extension absent` in other rooms is expected until their pi is restarted — the package is global.
 - 10-28 — **0.2.0 committed** `327109a` (not pushed); logs/ + dream scratch gitignored. Open for 0.2.1: see results/012 'Still open'.
 - 10-28 08:02 — Round A027 #1 (daily): room empty, nothing to integrate; recorded L034 quote-from-arg, L035 idle-wake-late-not-never. Still waiting: **commit 0.2.0?**
 - 10-27 23:47 — Rounds #3/#4 empty (fired 6 min late each — sleep; L035). Round backed off: A025 cancelled → **A027 weekdays 08:00** while idle; re-arm `wake 2h` when work launches. Still waiting: **commit 0.2.0?**
