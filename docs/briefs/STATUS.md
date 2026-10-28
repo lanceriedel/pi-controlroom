@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 10-28 — **0.2.0 committed** `327109a` (not pushed); logs/ + dream scratch gitignored. Open for 0.2.1: see results/012 'Still open'.
 - 10-28 08:02 — Round A027 #1 (daily): room empty, nothing to integrate; recorded L034 quote-from-arg, L035 idle-wake-late-not-never. Still waiting: **commit 0.2.0?**
 - 10-27 23:47 — Rounds #3/#4 empty (fired 6 min late each — sleep; L035). Round backed off: A025 cancelled → **A027 weekdays 08:00** while idle; re-arm `wake 2h` when work launches. Still waiting: **commit 0.2.0?**
 - 10-27 19:40 — Round A025 #2: dream judged (6 promote/4 reject, 6 supersedes incl. dup D019). Memory 24 D · 27 L · 0 proposed. Still waiting: **commit 0.2.0?**
@@ -13,8 +14,7 @@
 - 10-27 15:25 — Verification round done (009/010/011 landed). Verdict: **not safe to commit** until 012 lands (ledger blockers, stuck? FAIL, flush<75 bug, controller continuity). L023 superseded by L027 (extension did not compact; typed /compact did). Standing round wake A025 armed (17:39, every 2h). 012 proof /flush at 15:41 (ctx 8%) → flushed D020, replied /compact.
 
 ## Decisions waiting on the human
-1. **Commit 0.2.0?** 012 landed green (S1–S9 pass; 011 blockers fixed). `git diff` = 7 files modified + 19 untracked (extensions/, prompts/dream.md, briefs, results, memory). Say `commit` and I'll commit as `0.2.0 — durable control room` (no push).
-2. **Overview video of pi-controlroom** — where is the narrated-video pipeline you used in the other space (repo/path + tool: Remotion / ffmpeg+TTS / screen-recording / other)? Also target length & audience. Brief `013-overview-video` launches as soon as this lands.
+1. **Overview video of pi-controlroom** — where is the narrated-video pipeline you used in the other space (repo/path + tool: Remotion / ffmpeg+TTS / screen-recording / other)? Also target length & audience. Brief `013-overview-video` launches as soon as this lands.
 
 ## How to use the agents
 `herdr agent list` · `herdr agent read <name> --source recent-unwrapped --lines 60` · `herdr agent prompt <name> "…"` · `herdr agent focus <name>`
