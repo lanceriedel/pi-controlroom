@@ -18,4 +18,6 @@ Kinds: `watch <agent>` (worker finished/blocked/stuck) · `play` (end a pause) �
 | A016 | watch code-review | fired | — | — | 1 | no | integrate 011-code-review when DONE | launch 10-27 14:43 |
 | A023 | watch close-the-loop | fired | — | — | 1 | no | integrate 012-close-the-loop when DONE | launch 10-27 15:21 |
 | A025 | wake | cancelled | 2026-10-28 01:39 | every 2h | 4 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h | wake 10-27 15:39 · cancelled 10-27 23:46 |
-| A027 | wake | armed | 2026-10-29 08:00 | weekdays 08:00 | 1 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 10-27 23:46 |
+| A027 | wake | cancelled | 2026-10-29 08:00 | weekdays 08:00 | 1 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 10-27 23:46 · cancelled 10-28 13:10 |
+| A028 | watch tobi-comparison | fired | — | — | 1 | no | integrate 013-tobi-comparison when DONE | launch 10-28 13:09 |
+| A029 | wake | armed | 2026-10-28 17:09 | every 2h | 1 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h | wake 10-28 13:09 |

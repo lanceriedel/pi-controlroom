@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 10-28 15:10 — Round A029 #1: 013 comparison doc landed (read it: `code docs/briefs/results/013-tobi-comparison.md` ⌘⇧V, or Obsidian → controlroom/results). Push decision (a/b) still open.
 - 10-28 10:45 — Lance's w9 strip showed `controller $0.00 · ctx ?%`: init had renamed its controller `controller-<ws>` (012) but strip/controller() only matched `*controller`. Fixed (`is_ctl`, e22064f); CTX now reads the pinned pane's health; wB pin written (`logs/.controller`). `extension absent` in other rooms is expected until their pi is restarted — the package is global.
 - 10-28 — **0.2.0 committed** `327109a` (not pushed); logs/ + dream scratch gitignored. Open for 0.2.1: see results/012 'Still open'.
 - 10-28 08:02 — Round A027 #1 (daily): room empty, nothing to integrate; recorded L034 quote-from-arg, L035 idle-wake-late-not-never. Still waiting: **commit 0.2.0?**
@@ -25,6 +26,7 @@ Results land in `docs/briefs/results/`; chat is ephemeral, files are the memory.
 ## Landed
 | when | brief | worker | result | one-liner |
 |---|---|---|---|---|
+| 10-28 | 013-tobi-comparison | tobi-comparison | [results/013-tobi-comparison.md](results/013-tobi-comparison.md) | Lance-facing comparison, 110 lines; biggest weakness = no `core changed → restart` + untested auto-flush/S10 |
 | 10-27 | dream 2026-10-27-1740 | dreamer-1 | [dreams/2026-10-27-1740.md](memory/dreams/2026-10-27-1740.md) | 10 proposed → 6 promoted (D023–D026, L032–L033) · 4 rejected · 6 merges applied |
 | 10-27 | 012-close-the-loop | close-the-loop | [results/012-close-the-loop.md](results/012-close-the-loop.md) | all 011 blockers + 009 bugs 1–6 fixed; S3 stuck? **pass** (20m), S6 flush→compact **pass** (ext-triggered #2); +68 lines |
 | 10-27 | 011-code-review | code-review | [results/011-code-review.md](results/011-code-review.md) | 3 blockers (ledger IDs/race/parse) · 12 should-fix · not safe to commit |
@@ -60,3 +62,4 @@ Results land in `docs/briefs/results/`; chat is ephemeral, files are the memory.
 | stuck-probe | 10-27 15:49 | 012 S3 re-run: stuck? fired at 20m (pass) | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-10-27T21-24-43-298Z_01a17f40-4ea1-71ca-ae76-d49adc01ac59.jsonl` |
 | close-the-loop | 10-27 17:40 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-10-27T21-21-23-699Z_01a17f3d-42f3-74b4-bd50-4f030485d2ea.jsonl` |
 | dreamer-1 | 10-27 19:40 | dream judged | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-10-27T23-40-13-691Z_01a17fbc-5dfb-75e7-ba7c-45519921ac00.jsonl` |
+| tobi-comparison | 10-28 15:09 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-10-28T19-09-49-570Z_01a183eb-2a82-7422-b053-0add08e0c174.jsonl` |
