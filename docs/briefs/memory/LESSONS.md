@@ -35,3 +35,4 @@
 - L033 2026-10-27 **herdr-prompt-pastes-keys** — `herdr agent prompt` pastes keystrokes, so it CAN run /reload and /flush in a pi pane (009/012 proofs did); wakes wrap text in [A### · wake] so they never can ← docs/briefs/results/008-compaction-extension.md:"pastes keystrokes"
 - L034 2026-10-28 **quote-from-arg** — shell eats the quotes in --from path:"phrase" — single-quote the whole --from arg or the CLI sees path:phrase and refuses ← skills/controlroom/SKILL.md:"--from"
 - L035 2026-10-28 **idle-wake-late-not-never** — idle rounds: A025 due 21:39/23:39 fired 21:45/23:45 (6 min late, machine asleep) with an empty room — wakes fire late not never; back off when idle ← logs/agents.log:"A025 fired"
+- L036 2026-10-28 **ctl-name-predicate-shared** — init's collision rename controller-<ws> wasn't recognised by controller()/strip (endswith controller): w9 showed $0.00 ctx ?%, wakes would block — one is_ctl() ← docs/briefs/STATUS.md:"renamed its controller"
