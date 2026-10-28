@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 10-28 17:22 — Round A029 #2: room empty (fired 12 min late — sleep). Backed off to daily A030 weekdays 08:00. Push decision (a/b) still open.
 - 10-28 15:10 — Round A029 #1: 013 comparison doc landed (read it: `code docs/briefs/results/013-tobi-comparison.md` ⌘⇧V, or Obsidian → controlroom/results). Push decision (a/b) still open.
 - 10-28 10:45 — Lance's w9 strip showed `controller $0.00 · ctx ?%`: init had renamed its controller `controller-<ws>` (012) but strip/controller() only matched `*controller`. Fixed (`is_ctl`, e22064f); CTX now reads the pinned pane's health; wB pin written (`logs/.controller`). `extension absent` in other rooms is expected until their pi is restarted — the package is global.
 - 10-28 — **0.2.0 committed** `327109a` (not pushed); logs/ + dream scratch gitignored. Open for 0.2.1: see results/012 'Still open'.
