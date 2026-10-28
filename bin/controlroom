@@ -273,9 +273,10 @@ def is_auto(r): return r["kind"].split()[0] in ("wake","dream","watch-path","flu
 def next_wake(rows):   # (row, datetime) of the soonest armed wake/dream row, or None
     c=[(parse_local(r["next"]),r) for r in rows if r["kind"] in ("wake","dream") and r["state"]=="armed"]; c=[(t,r) for t,r in c if t]
     return (min(c,key=lambda x:x[0])[1],min(c,key=lambda x:x[0])[0]) if c else None
+def is_ctl(n): return (not n) or n=="controller" or n.startswith("controller-") or n.endswith("controller")   # (012.1) init renames collisions to controller-<ws>; the strip and controller() must agree
 def controller():   # L012: resolve by pane id recorded in logs/.controller (init / tick-install); fall back to the name `controller` in this workspace. (012) 011 #5: a recycled pane id whose agent is named something else is never the controller
     RAW or agents(); pid=open(CTRL).read().strip() if os.path.exists(CTRL) else ""
-    a=next((x for x in RAW if pid and x["pane_id"]==pid and (not x.get("name") or x["name"].endswith("controller"))),None) or next((x for x in RAW if x.get("name")=="controller" and (not WS or x.get("workspace_id")==WS)),None)
+    a=next((x for x in RAW if pid and x["pane_id"]==pid and is_ctl(x.get("name"))),None) or next((x for x in RAW if x.get("name")=="controller" and (not WS or x.get("workspace_id")==WS)),None)
     return (a["pane_id"],a["agent_status"]) if a else (None,None)
 def prompt_controller(rid,text,st,dry,cap=True):   # §2.5 → ok | off | backlog | blocked. working → still sent (pi queues typed input as a follow-up). (012) 011 #5: no controller = blocked (retry each tick, toast once after 30 min); 011 #6: cap=False for flush/post-compaction
     if not AUTOPROMPT: return "off"
@@ -615,8 +616,8 @@ elif cmd=="strip":   # TICK line (+ COST line in detail) for status_text
     else: print(f" TICK  last {time.strftime('%H:%M:%S',time.localtime(t))} · {s}")
     if os.environ.get("DETAIL")=="1":
         A=load_cache().get("agents",{}); c=lambda f: sum(h.get("cost",0) for n,h in A.items() if f(n) and h.get("status")!="missing")
-        print(f" COST  controller ${c(lambda n: n.endswith('controller')):.2f} · workers ${c(lambda n: not n.endswith('controller')):.2f} · today ${sum(h.get('cost_today',0) for h in A.values()):.2f}   {DIM}(from pi session jsonl; tick refreshes working agents){OFF}")
-        H=next((h for n,h in A.items() if n.endswith("controller")),{}); fs=load_state().get("flush",{})   # (008) controller context line
+        print(f" COST  controller ${c(is_ctl):.2f} · workers ${c(lambda n: not is_ctl(n)):.2f} · today ${sum(h.get('cost_today',0) for h in A.values()):.2f}   {DIM}(from pi session jsonl; tick refreshes working agents){OFF}")
+        H=next((h for n,h in A.items() if is_ctl(n) and h.get("status")!="missing"),{}); fs=load_state().get("flush",{})   # (008) controller context line
         try: fl=open(FLUSHED).read().split()[0][11:16]
         except Exception: fl="—"
         try: cn=json.load(open(COMPS)).get("count",0) if fs.get("ext") else H.get("compactions",0)
