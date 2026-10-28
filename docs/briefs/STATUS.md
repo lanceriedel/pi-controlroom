@@ -14,7 +14,7 @@
 - 10-27 15:25 — Verification round done (009/010/011 landed). Verdict: **not safe to commit** until 012 lands (ledger blockers, stuck? FAIL, flush<75 bug, controller continuity). L023 superseded by L027 (extension did not compact; typed /compact did). Standing round wake A025 armed (17:39, every 2h). 012 proof /flush at 15:41 (ctx 8%) → flushed D020, replied /compact.
 
 ## Decisions waiting on the human
-1. **Overview video of pi-controlroom** — where is the narrated-video pipeline you used in the other space (repo/path + tool: Remotion / ffmpeg+TTS / screen-recording / other)? Also target length & audience. Brief `013-overview-video` launches as soon as this lands.
+_(none)_
 
 ## How to use the agents
 `herdr agent list` · `herdr agent read <name> --source recent-unwrapped --lines 60` · `herdr agent prompt <name> "…"` · `herdr agent focus <name>`

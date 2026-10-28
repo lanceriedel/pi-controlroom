@@ -169,8 +169,8 @@ if __name__ == "__main__":
 ### `mana-pulse-notify --once --verbose` against today's real files (first run, fresh state → notifies; second run → no-op)
 ```
 == run 1 ==
-2026-10-27 09:45:12 pulse: NOTIFY 3 item(s) | Brooklyn Doak, group DM with you, Antoine, Grady Karp (11:05 EDT) — asks whether Search will share…
-2026-10-27 09:45:12 daily: NOTIFY 4 item(s) | mana/inbox/2026-10-27-daily-reply-javier-new-org-member — Did you book time with Javier / reach the…
+2026-10-27 09:45:12 pulse: NOTIFY 3 item(s) | <redacted: Slack thread summary>
+2026-10-27 09:45:12 daily: NOTIFY 4 item(s) | <redacted: inbox item>
 rc=0
 == run 2 ==
 2026-10-27 09:45:12 pulse: unchanged (mtime 1793115512.2219641)
@@ -188,7 +188,7 @@ rc=0
 ### Debounce / quiet-hour behaviour (run against a temp copy of today's pulse, notify stubbed; vault untouched)
 ```
 -- a: first sight
-pulse: NOTIFY 3 item(s) | Brooklyn Doak, group DM with you, Antoine, Grady Karp (11:05 EDT) — asks whether Search will share…
+pulse: NOTIFY 3 item(s) | <redacted: Slack thread summary>
 -- b: file rewritten, same 3 items + a new "Still open" bullet
 pulse: changed, 3 Needs you item(s) unchanged -> no notify
 -- c: rewritten as "Quiet hour. Nothing new needs you." + Still open

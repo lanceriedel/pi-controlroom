@@ -20,4 +20,3 @@ Each brief contains: objective · inputs (with paths) · constraints (time-boxed
 | [010-tobi-scorecard](010-tobi-scorecard.md) | Feature-by-feature grade vs Tobi's ULTIMATE reference + durability verdict | no |
 | [011-code-review](011-code-review.md) | Pre-commit review of the 0.2.0 diff (seams, tick safety, prompt path, memory CLI, extension, docs drift) | no |
 | [012-close-the-loop](012-close-the-loop.md) | Fix 011 blockers/should-fix, 009 bugs (stuck? cache-warm, flush<75, init collision), heartbeat gate, Boot round-wake; re-grade S3/S6 | no |
-| 013-overview-video _(pending decision)_ | Narrated overview video of pi-controlroom | TBD — depends on video pipeline location |
