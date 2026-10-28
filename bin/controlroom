@@ -617,7 +617,8 @@ elif cmd=="strip":   # TICK line (+ COST line in detail) for status_text
     if os.environ.get("DETAIL")=="1":
         A=load_cache().get("agents",{}); c=lambda f: sum(h.get("cost",0) for n,h in A.items() if f(n) and h.get("status")!="missing")
         print(f" COST  controller ${c(is_ctl):.2f} · workers ${c(lambda n: not is_ctl(n)):.2f} · today ${sum(h.get('cost_today',0) for h in A.values()):.2f}   {DIM}(from pi session jsonl; tick refreshes working agents){OFF}")
-        cp=controller()[0]; cn_=next((x.get("name") for x in RAW if x["pane_id"]==cp),None); H=A.get(cn_) or next((h for n,h in A.items() if is_ctl(n) and h.get("status")!="missing"),{})   # the pinned pane's agent first; fs=load_state().get("flush",{})   # (008) controller context line
+        cp=controller()[0]; cn_=next((x.get("name") for x in RAW if x["pane_id"]==cp),None); H=A.get(cn_) or next((h for n,h in A.items() if is_ctl(n) and h.get("status")!="missing"),{})   # the pinned pane's agent first
+        fs=load_state().get("flush",{}); fs=load_state().get("flush",{})   # (008) controller context line
         try: fl=open(FLUSHED).read().split()[0][11:16]
         except Exception: fl="—"
         try: cn=json.load(open(COMPS)).get("count",0) if fs.get("ext") else H.get("compactions",0)
