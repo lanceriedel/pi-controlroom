@@ -36,3 +36,4 @@
 - L034 2026-10-28 **quote-from-arg** — shell eats the quotes in --from path:"phrase" — single-quote the whole --from arg or the CLI sees path:phrase and refuses ← skills/controlroom/SKILL.md:"--from"
 - L035 2026-10-28 **idle-wake-late-not-never** — idle rounds: A025 due 21:39/23:39 fired 21:45/23:45 (6 min late, machine asleep) with an empty room — wakes fire late not never; back off when idle ← logs/agents.log:"A025 fired"
 - L036 2026-10-28 **ctl-name-predicate-shared** — init's collision rename controller-<ws> wasn't recognised by controller()/strip (endswith controller): w9 showed $0.00 ctx ?%, wakes would block — one is_ctl() ← docs/briefs/STATUS.md:"renamed its controller"
+- L037 2026-10-28 **dont-touch-other-room-ui** — testing in another room: never toggle its detail/pause/etc — I ran detail-off in w9 and hid Lance's COST line; use DETAIL=1 controlroom status or a scratch room ← docs/briefs/STATUS.md:"w9 strip showed"
