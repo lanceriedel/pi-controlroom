@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 10-29 — psd-controller FYI: lancedocs snapshots now go to `~/.brain/memory-bank/personal/docs-archive/`, not `docs/` (public index). Not this room's workers — relayed to controller-w9 (lookbook) to record.
 - 10-29 08:01 — Round A030 #1: room empty. LESSONS 31/30 → merged L024→L030, L010→D015 (29). 11 commits unpushed; push decision (a/b) still open.
 - 10-28 17:22 — Round A029 #2: room empty (fired 12 min late — sleep). Backed off to daily A030 weekdays 08:00. Push decision (a/b) still open.
 - 10-28 15:10 — Round A029 #1: 013 comparison doc landed (read it: `code docs/briefs/results/013-tobi-comparison.md` ⌘⇧V, or Obsidian → controlroom/results). Push decision (a/b) still open.
