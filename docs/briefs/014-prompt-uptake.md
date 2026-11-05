@@ -1,0 +1,24 @@
+# 014 — prompt-uptake: a wake that dies to a connection error must be retried, not lost
+
+## Objective
+Three of the last five daily rounds silently never happened. The tick pasted the wake (`agents.log`: `A030 fired → prompted controller (wC:p1, was idle)`), pi started a turn, and the turn died: the controller's session jsonl has assistant entries with `stopReason: "error"`, `errorMessage: "Connection error."` (4 retries over ~2–25 min, `usage.output 0`) on 10-30 14:18Z, 11-02 15:02Z and 11-04 15:54Z. The 08:00 wake lands seconds after the Mac wakes from sleep, before network/VPN/proxy is back. The user message stays in the session and is re-sent with the *next* day's turn, so the controller saw "three wakes at once" and nothing was done for days. Make the tick notice an error-aborted turn after any prompt it sent and re-prompt; make the wake itself less likely to hit the dead window.
+
+## Memory that applies (verbatim; `controlroom memory` is the source)
+- L039 wake-dies-to-conn-error · L035 idle-wake-late-not-never · L028 a mechanism claim needs a log line from that mechanism · L032 symlink-save-is-live (`bash -n` → `tick --once --dry-run` → atomic mv; WIP copy in `logs/scratch/`) · L011 test in a mktemp scratch repo · L009 never full `init` from a worker pane · L037 never toggle another room's UI · L033 `herdr agent prompt` pastes keystrokes · D021 ledger never hand-edited · D026 no controller ⇒ blocked, never spent · D023 flush bypasses the cap
+
+## Inputs
+- `bin/controlroom`: `prompt_controller` (~`:280`), `parse_session` (~`:363`, already walks the controller jsonl incrementally for health), `fire_auto`/tick steps 5–6, `.tick-state.json` keys `wp/blocked/waiting`.
+- The controller session jsonl (path = `herdr agent list` → `agent_session.value` for `logs/.controller`'s pane). Look at entries 2026-10-30T14:18–14:21Z and 2026-11-04T15:54–16:21Z for the exact shape (`message.role=assistant`, `stopReason`, `errorMessage`, `usage.output`).
+- `docs/design/durable-controlroom.md` §2.5 (prompting) and `results/012-close-the-loop.md` #5 (`stall()` blocked-retry bookkeeping — reuse it).
+
+## Work
+1. **Uptake check (tick):** when `prompt_controller` returns `ok`, record `st["sent"][rid] = {ts, jsonl_offset}`. On later ticks, for each pending `sent`: scan the controller jsonl past the offset for the user message carrying `[A<rid>` — then the next assistant entries. Outcomes: (a) an assistant entry with `stopReason != "error"` or any tool call → **taken**, drop; (b) assistant entries all `stopReason == "error"` and the last one is ≥ 3 min old → **aborted** → re-prompt once with a short prefix (`[retry · A### · earlier turn aborted: <errorMessage>]` + original text), log `A### turn aborted (Connection error.) → re-prompted`, mark `retried`; (c) second abort → toast `controller: wake A### failed twice (Connection error.)` once, leave the row due so the next tick keeps trying every 15 min (D026 pattern), never spend it; (d) no user message found after 3 min → the paste itself was lost → same as (b) with `prompt not taken`. Retry prompts bypass the 6/h cap (like D023) but count toward it.
+2. **Dodge the dead window:** add a tick-level guard: if the machine's uptime-since-wake is < 2 min (`sysctl -n kern.waketime` on macOS; fall back to `.tick.last` gap > 5 min meaning "we just woke"), defer firing prompt rows one tick and log `deferring prompts 1 tick (just woke)`. Keep it tiny; don't build a network probe.
+3. **Strip:** CTX/health line or the AGENTS row shows `⚠ last turn aborted (Connection error.)` for the controller when the most recent assistant entry is an error — one phrase, detail view only.
+4. **Prove it** in a scratch repo with a fake herdr and a fake jsonl: synthesize the 10-30 shape (user `[A001 …]` then 4 error assistants) → expect one re-prompt and the log line; then a taken turn → expect nothing; then two aborts → expect one toast and the row still due. Then live: `controlroom tick --once --dry-run` must print `tick: nothing to do` (today's 08:00 turn *was* taken — the dry run must not re-prompt it). Do **not** prompt the live controller except via one `controlroom wake 0m "014 proof: reply TAKEN-OK" --prompt` at the end, and confirm the tick logs it as taken (no re-prompt) within 2 ticks.
+
+## Constraints
+bash 3.2 + python3 stdlib; `(014)` markers; ≤ 60 lines net in `bin/controlroom`; no new files besides state keys; every save via WIP copy + `bash -n` + `tick --once --dry-run` (L032); no `init`, no `pause`, no other rooms; nothing committed; time-box 45 min, write the skeleton of the result in the first 5.
+
+## Deliverable
+`docs/briefs/results/014-prompt-uptake.md`: finding → fix (`file:line`) → proof (command + log line) table; the scratch transcript trimmed; the live TAKEN-OK proof; deviations; `decide`/`lesson` lines you recorded (`--from` this file); sentinel `DONE 014`; go idle.

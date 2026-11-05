@@ -4,8 +4,10 @@
 ## Workers
 | pane | agent | brief | state | result |
 |---|---|---|---|---|
+| wC:pP | prompt-uptake | 014-prompt-uptake | working | — |
 
 ## Notes
+- 11-05 08:05 — Round A030 #5–#6. **Root cause of the 'batched wakes' found in the session jsonl:** the 10-30, 11-02 and 11-04 wakes each started a turn that died with `stopReason: error — Connection error.` (4 retries, 0 output) — the 08:00 wake hits the model seconds after the Mac wakes, before network/VPN is up; the user message stays queued and is re-sent with the next turn. Not a paste problem (L038 was wrong → L039). Brief 014 launched: tick detects error-aborted turns after a prompt and re-prompts.
 - 11-03 08:03 — Round A030 #2–#4 arrived together: the 10-30 and 11-02 wakes were pasted but never started a turn (pane input held a stray `wh`?). Room empty, nothing to land. **Gap for 0.2.1:** tick should verify the controller goes idle→working within ~3 min of a prompt, else log `prompt not taken` and re-paste (L038). 13 commits unpushed; push a/b still open.
 - 10-29 — psd-controller FYI: lancedocs snapshots now go to `~/.brain/memory-bank/personal/docs-archive/`, not `docs/` (public index). Not this room's workers — relayed to controller-w9 (lookbook) to record.
 - 10-29 08:01 — Round A030 #1: room empty. LESSONS 31/30 → merged L024→L030, L010→D015 (29). 11 commits unpushed; push decision (a/b) still open.
