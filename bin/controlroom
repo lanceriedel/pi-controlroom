@@ -18,7 +18,8 @@
 #   controlroom wake <when> "<instr>" [--prompt|--no-prompt] [--repeat "every 30m"] · watch-path "<glob>" "<instr>" [--prompt] · cancel A### · automations [--all]   (006) rows the tick fires; wake prompts the controller
 #   controlroom dream [--reason r] [--since ISO|7d] [--here] · dream --check · promote P###…|--all [--kind D|L] · reject P### [why]   propose-only memory consolidation (prompts/dream.md → dreamer-N)
 #   controlroom event <kind> [arg] [src] (008) log an extension/tick event to logs/agents.log: flush-requested <pct> [ext|manual] (toast once, marker) · compaction <tokensBefore> (logs/.compactions) · ext-error <msg>
-#   controlroom verify <agent> · lastline <agent> · resume <agent> [note] · resume-stalled [note] · strip-restart · detail|detail-on|detail-off   (worker state from the pane · re-prompt + re-arm · pager · strip detail)
+#   controlroom verify <agent> · lastline <agent> · resume <agent> [note] · resume-stalled [note] · strip-restart [--pane P] · strip-check [--force] · detail|detail-on|detail-off   (worker state from the pane · re-prompt + re-arm · pager (this workspace only) · relaunch a dead pager · strip detail)
+#   <agent> may be `<machine>/<agent>` (a saved `herdr machine`) for verify · lastline · resume · watch — translated to `herdr --machine <machine>` (015)
 #   controlroom cancel --prune-fired    (012) drop fired/cancelled one-shot rows from AUTOMATIONS.md (ids never reused) · touch logs/AUTOPROMPT-OFF = per-room kill switch (tick + strip)
 set -u
 CMD=${1:-help}; shift || true
@@ -46,46 +47,20 @@ else: print("stalled")'
 }
 
 need_herdr(){ [ "${HERDR_ENV:-}" = 1 ] || { echo "not inside a Herdr pane (HERDR_ENV!=1)"; exit 1; }; }
+strip_pane(){   # (015) the `status` pane of THIS workspace ($HERDR_WORKSPACE_ID), or --pane <id>; empty when none. Two rooms on one server both label their strip `status`.
+  while [ $# -gt 0 ]; do case "$1" in --pane) echo "$2"; return;; esac; shift; done
+  herdr pane list 2>/dev/null | WS="$WS" python3 -c 'import json,sys,os
+d=json.load(sys.stdin)["result"]; ps=d.get("panes",d); ws=os.environ.get("WS","")
+c=[p["pane_id"] for p in ps if (p.get("label") or "")=="status" and (not ws or p.get("workspace_id")==ws or str(p.get("pane_id","")).startswith(ws+":"))]
+print(c[0] if len(c)==1 or (c and ws) else "")'
+}
 
 status_text(){
   printf '\033[1m CONTROL ROOM  %s  %s\033[0m   (say "ok" in CONTROLLER to integrate · \033[31;1mblocked\033[0m = needs you)%s\n' "$(date '+%a %H:%M')" "$(basename "$ROOT")" "$(cr5 pause-hdr)"
   DETAIL=0; [ -f "$DETAIL_FLAG" ] && DETAIL=1
-  AGENTS_JSON=$(herdr agent list 2>/dev/null) WS="$WS" DETAIL="$DETAIL" ROOT="$ROOT" SELF="$0" python3 - <<'PY'
-import json,sys,os,re,subprocess
-try: ags=json.loads(os.environ.get("AGENTS_JSON","{}"))["result"]["agents"]
-except Exception: ags=[]
-ws=os.environ.get("WS"); detail=os.environ.get("DETAIL")=="1"; root=os.environ.get("ROOT")
-col={"working":"\033[33m","idle":"\033[32m","done":"\033[32;1m","blocked":"\033[31;1m","crashed":"\033[31;1m","stalled":"\033[35m","unknown":"\033[90m"}
-# task per agent from the board (STATUS.md workers table: | pane | agent | brief | state | result |)
-tasks={}
-try:
-    for line in open(os.path.join(root,"docs/briefs/STATUS.md")):
-        cells=[c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells)>=3 and cells[1] and cells[1] not in ("agent","---"): tasks[cells[1]]=cells[2]
-except Exception: pass
-def lastline(name):
-    try:
-        return subprocess.run([os.environ.get("SELF","controlroom"),"lastline",name],capture_output=True,text=True,timeout=5).stdout.strip()   # one impl: `controlroom lastline` (005)
-    except Exception: return ""
-try: H=json.load(open(os.path.join(root,"logs/.health.json"))).get("agents",{})   # written by `controlroom tick` / `health` (005)
-except Exception: H={}
-col.update({"stuck?":"\033[31;1m","spinning?":"\033[33m"})
-print(" AGENTS" + ("  (detail on — Ctrl+B D to toggle)" if detail else "  (Ctrl+B D for detail)"))
-for a in ags:
-    if ws and a.get("workspace_id")!=ws: continue
-    n=a.get("name") or a["pane_id"]; st=a["agent_status"]; h=H.get(n,{})
-    if st=="working" and h.get("flag"): st=h["flag"]
-    if st in ("done","idle") and a.get("name"):
-        try:
-            v=subprocess.run(["bash","-c",f'source "{os.environ.get("SELF","")}" __lib__ 2>/dev/null; verify "$1"',"_",n],capture_output=True,text=True,timeout=4).stdout.strip()   # (012) 011 #13: name as argv
-        except Exception: v=""
-        st={"done":"done","crashed":"crashed","stalled":"stalled"}.get(v, st)
-    print(f"   {col.get(st,'')}{st:<8}\033[0m {n:<18} {a['pane_id']}" + (f"   \033[90m{tasks.get(n,'')[:90]}\033[0m" if detail and tasks.get(n) else "")
-          + (f"   \033[90mlast write {h['last_write']} · ctx {h.get('ctx_pct','?')}%\033[0m" if detail and h.get("last_write") else ""))
-    if detail and st in ("working","stuck?","spinning?"):
-        ll=lastline(n)
-        if ll: print(f"            \033[36m→ {ll}\033[0m")
-PY
+  AGENTS_JSON=$(herdr agent list 2>/dev/null); export AGENTS_JSON
+  DETAIL="$DETAIL" rooms_py header   # (015) `ROOMS  local ▶ctl (PRIMARY) ⇄ <machine> ▶ctl · MODE · sync` — only when `herdr machine list` has rows
+  DETAIL="$DETAIL" rooms_py agents   # (015) AGENTS grouped by host: local (<hostname>) then one group per saved machine (remote agents from logs/.machines-cache.json)
   DETAIL="$DETAIL" cr5 strip   # TICK heartbeat line (+ COST in detail) (005)
   printf ' PIPELINES  (last 10 by time · running=yellow · no-marker=no START/END lines in the log%s)\n' "$([ "$DETAIL" = 1 ] && echo ' · detail: show all')"
   ROOT="$ROOT" DETAIL="$DETAIL" python3 - <<'PY'
@@ -945,15 +920,150 @@ PY
 }
 # ---- end dream ----
 
+# ---- rooms (015): one picture across machines ----  `herdr machine list` → per machine `herdr --machine <label> agent list`, ≤ 3 s total, cached in
+# logs/.machines-cache.json (the tick refreshes it every pass and logs [label] worker transitions; the strip refreshes it only when it is > 60 s old).
+# rooms_py <refresh [--force] [--quiet] | header | agents | machines>; data via env (AGENTS_JSON, DETAIL, WS) — stdin is the heredoc.
+rooms_py(){ ROOT="$ROOT" SELF="$0" WS="$WS" LOG="$LOG" DETAIL="${DETAIL:-0}" AGENTS_JSON="${AGENTS_JSON:-}" python3 - "$@" <<'PY'
+import json,os,re,socket,subprocess,sys,time
+from concurrent.futures import ThreadPoolExecutor
+ROOT=os.environ["ROOT"]; SELF=os.environ["SELF"]; WS=os.environ.get("WS") or None; LOGS=os.path.join(ROOT,"logs"); LOG=os.environ["LOG"]
+MC=os.path.join(LOGS,".machines-cache.json"); CTRL=os.path.join(LOGS,".controller"); STATUS=os.path.join(ROOT,"docs/briefs/STATUS.md")
+BUDGET=float(os.environ.get("CONTROLROOM_MACHINES_BUDGET",3)); TTL=float(os.environ.get("CONTROLROOM_MACHINES_TTL",60))
+now=time.time(); cmd,args=sys.argv[1],sys.argv[2:]
+RED,YEL,GRN,CYN,DIM,BOLD,OFF="\033[31;1m","\033[33m","\033[32m","\033[36m","\033[90m","\033[1m","\033[0m"
+COL={"working":YEL,"idle":GRN,"done":"\033[32;1m","blocked":RED,"crashed":RED,"stalled":"\033[35m","unknown":DIM,"stuck?":RED,"spinning?":YEL}
+def hhmm(t): return time.strftime("%H:%M",time.localtime(t)) if t else "?"
+def sh(c,timeout):
+    try: return subprocess.run(c,capture_output=True,text=True,timeout=timeout).stdout
+    except Exception: return ""
+def machines():   # saved + enabled `herdr machine` rows → [{label,target}]
+    try: ms=json.loads(sh(["herdr","machine","list","--json"],2) or "[]")
+    except Exception: ms=[]
+    return [m for m in ms if isinstance(m,dict) and m.get("label") and m.get("enabled",True)]
+def load():
+    try: return json.load(open(MC))
+    except Exception: return {"machines":{},"updated":0}
+def save(c): os.makedirs(LOGS,exist_ok=True); json.dump(c,open(MC+".tmp","w")); os.replace(MC+".tmp",MC)
+def board():   # STATUS.md head: `MODE: local|remote|<label>` · `controller: <name>` / `controller (<label>): <name>` · last `## HANDOFF <t>`
+    mode=None; ctls={}; handoff=None
+    try: txt=open(STATUS).read()
+    except Exception: return mode,ctls,handoff
+    m=re.search(r"MODE:\**\s*`?(\w[\w-]*)",txt); mode=m.group(1).lower() if m else None
+    for m in re.finditer(r"^\W{0,3}controller(?:\s*\(([^)]+)\))?:\**\s*`?([\w.-]+)`?",txt,re.M|re.I): ctls[(m.group(1) or "local").lower()]=m.group(2)
+    hs=re.findall(r"^## HANDOFF\s+(.+)$",txt,re.M); handoff=hs[-1].strip()[:16] if hs else None
+    return mode,ctls,handoff
+def is_ctl(n,host="local",ctls={}):   # a controller: the board's `controller:` field for that host, or the naming convention
+    n=n or ""; return bool(n) and (n==ctls.get(host) or n=="controller" or n.startswith("controller-") or n.endswith("-controller") or n.endswith("-remote"))
+def refresh(force=False,quiet=False):
+    c=load(); ms=machines(); labels={m["label"] for m in ms}
+    c["machines"]={k:v for k,v in c.get("machines",{}).items() if k in labels}
+    if not ms: c["updated"]=now; save(c); return c
+    if not force and now-c.get("updated",0)<TTL: return c
+    deadline=now+BUDGET
+    def q(m):
+        try: r=subprocess.run(["herdr","--machine",m["label"],"agent","list"],capture_output=True,text=True,timeout=max(0.5,deadline-time.time()))
+        except subprocess.TimeoutExpired: return m,None,"timeout"
+        except Exception as e: return m,None,str(e)[:60]
+        try: return m,json.loads(r.stdout)["result"]["agents"],None
+        except Exception: return m,None,((r.stderr.strip().splitlines() or ["no json"])[-1])[:60]
+    with ThreadPoolExecutor(max_workers=max(1,len(ms))) as ex: res=list(ex.map(q,ms))
+    events=[]
+    for m,ags,err in res:
+        lab=m["label"]; old=c["machines"].get(lab,{})
+        if ags is None:   # unreachable: keep last known agents (greyed on the strip), remember since when
+            e=dict(old); e.update(target=m.get("target",""),reachable=False,err=err,since=old.get("since") if old.get("reachable") is False else now); e.setdefault("agents",[]); c["machines"][lab]=e; continue
+        new=[{k:a.get(k) for k in ("name","pane_id","agent_status","workspace_id","tab_id")} for a in ags if a.get("name")]
+        oldst={a.get("name"):a.get("agent_status") for a in old.get("agents",[])}
+        for a in new:   # transitions → EVENTS (controllers excluded: they go idle after every prompt)
+            n=a["name"]; st=a["agent_status"]; prev=oldst.get(n)
+            if is_ctl(n,lab) or prev is None or prev==st: continue
+            if st=="blocked": events.append((f"[{lab}] worker {n} NEEDS YOU",f"herdr --machine {lab} agent focus {n}","request"))
+            elif prev=="working" and st in ("done","idle"): events.append((f"[{lab}] worker {n}: finished ({st})",f"controlroom verify {lab}/{n} · results are in the remote clone","done"))
+        c["machines"][lab]={"target":m.get("target",""),"reachable":True,"since":old.get("since") if old.get("reachable") else now,"last_ok":now,"agents":new,"err":None}
+    c["updated"]=now; save(c)
+    for t,b,s in events: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",t,b,s],env=dict(os.environ,ROOT=ROOT),timeout=10)
+    if not quiet:
+        for lab,e in c["machines"].items(): print(f"{lab:<12} {'reachable' if e['reachable'] else 'unreachable ('+str(e.get('err'))+')'} · {len(e.get('agents',[]))} agents · since {hhmm(e.get('since'))}")
+    return c
+def sync_line():   # local git vs origin (no fetch) — cheap and honest about what we know
+    head=sh(["git","-C",ROOT,"rev-parse","--short","HEAD"],3).strip(); ab=sh(["git","-C",ROOT,"rev-list","--left-right","--count","HEAD...@{u}"],3).split()
+    s=f"HEAD {head}" if head else ""
+    if len(ab)==2: s+=f" · ahead {ab[0]} · behind {ab[1]} (origin, last fetch)"
+    return s
+if cmd=="refresh": refresh("--force" in args,"--quiet" in args)
+elif cmd=="machines":
+    for lab,e in load().get("machines",{}).items(): print(json.dumps({"label":lab,**e}))
+elif cmd in ("header","agents"):
+    try: ags=json.loads(os.environ.get("AGENTS_JSON") or "{}")["result"]["agents"]
+    except Exception: ags=[]
+    detail=os.environ.get("DETAIL")=="1"; mode,ctls,handoff=board(); c=load()
+    if c.get("updated",0)<now-TTL: c=refresh(quiet=True)   # no tick running → the strip keeps the cache warm itself
+    ms=c.get("machines",{}); pid=open(CTRL).read().strip() if os.path.exists(CTRL) else ""
+    local=[a for a in ags if not WS or a.get("workspace_id")==WS]
+    def lctl(a): return a["pane_id"]==pid or is_ctl(a.get("name"),"local",ctls)
+    primary="local" if mode in (None,"local") else (mode if mode in ms else (next(iter(ms)) if mode=="remote" and len(ms)==1 else None))
+    rctl={lab:next((a["name"] for a in e.get("agents",[]) if is_ctl(a["name"],lab,ctls)),ctls.get(lab)) for lab,e in ms.items()}
+    if cmd=="header":
+        if not ms: sys.exit(0)
+        lc=next((a.get("name") or a["pane_id"] for a in local if lctl(a)),ctls.get("local") or "—")
+        parts=[f"local ▶{lc}"+(f" {BOLD}(PRIMARY){OFF}" if primary=="local" else "")]
+        for lab in ms: parts.append(f"{lab} ▶{rctl.get(lab) or '—'}"+(f" {BOLD}(PRIMARY){OFF}" if primary==lab else "")+("" if ms[lab].get("reachable") else f" {RED}unreachable{OFF}"))
+        print(f" ROOMS  {' ⇄ '.join(parts)} · MODE: {mode or '— (no MODE: line)'} · sync: {sync_line() or 'not a git checkout'}"+(f" · last HANDOFF {handoff}" if handoff else ""))
+        sys.exit(0)
+    # ---- AGENTS ----
+    tasks={}
+    try:
+        for line in open(STATUS):
+            cells=[x.strip() for x in line.strip().strip("|").split("|")]
+            if len(cells)>=3 and cells[1] and cells[1] not in ("agent","---"): tasks[cells[1]]=cells[2]
+    except Exception: pass
+    try: H=json.load(open(os.path.join(LOGS,".health.json"))).get("agents",{})   # written by `controlroom tick` / `health` (005)
+    except Exception: H={}
+    def lastline(n):
+        try: return subprocess.run([SELF,"lastline",n],capture_output=True,text=True,timeout=5).stdout.strip()
+        except Exception: return ""
+    def row(st,n,pane,ctl,prim,dim=False,extra=""):
+        c=DIM if dim else COL.get(st,""); print(f"  {'▶' if ctl else ' '}{c}{st:<8}{OFF} {DIM if dim else ''}{n:<18} {pane}{OFF}"+(f" {BOLD}PRIMARY{OFF}" if prim else "")+extra)
+    print(" AGENTS"+("  (detail on — Ctrl+B D to toggle)" if detail else "  (Ctrl+B D for detail)")+("  ▶ = controller" if ms else ""))
+    if ms: print(f"   {BOLD}local ({socket.gethostname().split('.')[0]}){OFF} · {len(local)} agents")
+    for a in sorted(local,key=lambda a: not lctl(a)):
+        n=a.get("name") or a["pane_id"]; st=a["agent_status"]; h=H.get(n,{})
+        if st=="working" and h.get("flag"): st=h["flag"]
+        if st in ("done","idle") and a.get("name"):
+            try: v=subprocess.run(["bash","-c",f'source "{SELF}" __lib__ 2>/dev/null; verify "$1"',"_",n],capture_output=True,text=True,timeout=4).stdout.strip()   # (012) 011 #13: name as argv
+            except Exception: v=""
+            st={"done":"done","crashed":"crashed","stalled":"stalled"}.get(v,st)
+        ex=(f"   {DIM}{tasks.get(n,'')[:90]}{OFF}" if detail and tasks.get(n) else "")+(f"   {DIM}last write {h['last_write']} · ctx {h.get('ctx_pct','?')}%{OFF}" if detail and h.get("last_write") else "")
+        row(st,n,a["pane_id"],lctl(a),lctl(a) and primary=="local",extra=ex)
+        if detail and st in ("working","stuck?","spinning?"):
+            ll=lastline(n)
+            if ll: print(f"            {CYN}→ {ll}{OFF}")
+    if not local and not ms: print("   (no agents in this workspace)")
+    for lab,e in ms.items():   # one group per saved machine; pane ids prefixed `<label>/`; unreachable → greyed last-known agents
+        ag=e.get("agents",[]); ok=e.get("reachable")
+        print(f"   {BOLD}{lab}{OFF} · "+(f"reachable · {len(ag)} agents" if ok else f"{RED}unreachable{OFF} (since {hhmm(e.get('since'))}{' · '+e['err'] if e.get('err') else ''})"+(" · last known:" if ag else "")))
+        for a in sorted(ag,key=lambda a: not is_ctl(a["name"],lab,ctls)):
+            n=a["name"]; c_=is_ctl(n,lab,ctls)
+            row(a["agent_status"],n,f"{lab}/{a['pane_id']}",c_,c_ and primary==lab,dim=not ok,extra=(f"   {DIM}{tasks.get(n,'')[:90]}{OFF}" if detail and tasks.get(n) else ""))
+        if not ag and ok: print(f"   {DIM}(no named agents){OFF}")
+else: print(f"rooms_py: unknown {cmd}",file=sys.stderr); sys.exit(1)
+PY
+}
+# ---- end rooms ----
+
 case "$CMD" in
   __lib__) return 0 2>/dev/null || exit 0 ;;   # sourced for verify()
   verify) [ -n "${1:-}" ] || { echo "usage: controlroom verify <agent>"; exit 2; }; verify "$1" ;;   # (012) 011 #16
   status) status_text ;;
+  machines)   # controlroom machines [--refresh] — (015) the remote-machine cache (logs/.machines-cache.json) as JSON lines; --refresh queries `herdr --machine <label> agent list` now (≤ 3 s total)
+    case " $* " in *" --refresh "*) rooms_py refresh --force;; *) rooms_py machines;; esac ;;
   detail) if [ -f "$DETAIL_FLAG" ]; then rm -f "$DETAIL_FLAG"; echo "detail: off"; else touch "$DETAIL_FLAG"; echo "detail: on"; fi ;;
   detail-on) touch "$DETAIL_FLAG" ;;
   detail-off) rm -f "$DETAIL_FLAG" ;;
   statusbar)   # curses pager: keeps your scroll position, refreshes only after 15 s of no input. q/ctrl+c quits.
-    [ "$(uname)" != Darwin ] && [ -d "$ROOT/docs/briefs" ] && { "$0" tick --loop >/dev/null 2>&1 & }   # no launchd → tick loop rides along with the pager (005)
+    if [ "$(uname)" != Darwin ] && [ -d "$ROOT/docs/briefs" ]; then   # no launchd → tick loop rides along with the pager (005) — unless one is already beating (015: strip-check relaunches the pager; don't stack loops)
+      hb=$(cat "$ROOT/logs/.tick.last" 2>/dev/null | cut -d' ' -f1); [ -n "$hb" ] && [ $(( $(date +%s) - hb )) -lt 180 ] || { "$0" tick --loop >/dev/null 2>&1 & }
+    fi
     exec controlroom-pager ;;
   init)
     MEMFLAGS=""; for a in "$@"; do case "$a" in --no-seed|--memory-only) MEMFLAGS="$MEMFLAGS $a";; esac; done   # memory (004)
@@ -984,7 +1094,7 @@ EOF
     have=$(herdr pane list 2>/dev/null | WS="$WS" python3 -c 'import json,sys,os
 d=json.load(sys.stdin)["result"]; ps=d.get("panes",d); ws=os.environ.get("WS","")
 print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status" and str(p.get("pane_id","")).startswith(ws+":")),""))' 2>/dev/null)
-    if [ -n "$have" ]; then echo "strip  → $have (unchanged)"; else
+    if [ -n "$have" ]; then echo "strip  → $have (unchanged)"; "$0" strip-check --pane "$have" --quiet; else   # (015) a strip pane that came back as a bare shell after a Herdr restart gets its pager back
     pane=$(herdr pane split --current --direction down --ratio 0.5 --cwd "$ROOT" --no-focus 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
     sleep 2; herdr pane rename "$pane" status >/dev/null 2>&1
     total=$(herdr pane layout --pane "$HERDR_PANE_ID" 2>/dev/null | python3 -c 'import json,sys; l=json.load(sys.stdin)["result"]["layout"]; print(l["area"]["height"])')
@@ -1036,13 +1146,27 @@ except Exception: print("timeout")')
     herdr agent prompt "$NAME" "Resume exactly where you stopped (your previous call failed or was cut off). Check your persisted files and logs first; do not redo finished steps. Every number in your results file must come from your own outputs; if a step did not complete, say so plainly instead of estimating. Finish the brief and reply with the single line: DONE $NAME. $EXTRA" >/dev/null 2>&1
     row=$(cr5 auto arm "$NAME" "" "resume $(date '+%m-%d %H:%M')")   # (005) re-arm the watch row instead of spawning a watcher
     note "resumed $NAME" "watch row re-armed" none; echo "$NAME resumed, ${row:-watch row armed}" ;;
-  strip-restart)   # controlroom strip-restart — restart the status pager in the pane labelled "status" (after a frozen window / dead pager)
-    need_herdr; pane=$(herdr pane list 2>/dev/null | python3 -c 'import json,sys
-d=json.load(sys.stdin)["result"]; ps=d.get("panes",d)
-print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status"),""))')
-    [ -z "$pane" ] && { echo "no pane labelled status"; exit 1; }
+  strip-restart)   # controlroom strip-restart [--pane <id>] — restart the status pager in THIS workspace's `status` pane (015: two rooms on one server share the label; never touch the other room's strip)
+    need_herdr; pane=$(strip_pane "$@")
+    [ -z "$pane" ] && { echo "no pane labelled status in workspace ${WS:-?} (pass --pane <id>)"; exit 1; }
     herdr pane send-keys "$pane" q >/dev/null 2>&1; sleep 0.5
     herdr pane run "$pane" "clear; cd '$ROOT' && controlroom statusbar" >/dev/null 2>&1 && echo "status pager restarted in $pane" ;;
+  strip-check)   # controlroom strip-check [--pane <id>] [--quiet] [--force] — is the pager alive in this workspace's `status` pane? If the pane shows a bare shell (Herdr restart), relaunch it. The tick calls this every pass.
+    QUIET=0; FORCE=0; for a in "$@"; do case "$a" in --quiet) QUIET=1;; --force) FORCE=1;; esac; done
+    [ "${HERDR_ENV:-}" = 1 ] || exit 0; pane=$(strip_pane "$@"); [ -z "$pane" ] && { [ "$QUIET" = 1 ] || echo "strip: no pane labelled status in workspace ${WS:-?}"; exit 0; }
+    st=$(herdr pane read "$pane" --source visible --lines 60 --format text 2>/dev/null | python3 -c '
+import sys,re
+ls=[l.rstrip() for l in sys.stdin.read().splitlines() if l.strip()]
+if any(re.search(r"refreshed \d\d:\d\d:\d\d",l) for l in ls[-3:]) or any("CONTROL ROOM" in l for l in ls[:3]): print("alive")
+elif not ls or re.search(r"(\$|%|❯|>)\s*$",ls[-1]) or re.search(r"controlroom-pager: not found|Traceback|command not found","\n".join(ls[-6:])): print("dead")
+else: print("busy")')
+    case "$st" in
+      alive) [ "$QUIET" = 1 ] || echo "strip $pane: pager alive";;
+      busy) if [ "$FORCE" = 1 ]; then st=dead; else [ "$QUIET" = 1 ] || echo "strip $pane: something else is running there — not relaunching (--force to override)"; fi;;
+    esac
+    if [ "$st" = dead ]; then
+      herdr pane run "$pane" "clear; cd '$ROOT' && controlroom statusbar" >/dev/null 2>&1 && { echo "[$(date '+%m-%d %H:%M')] strip relaunched in $pane (pane showed no pager)" >> "$LOG"; echo "strip $pane: pager relaunched"; }
+    fi ;;
   resume-stalled)  # controlroom resume-stalled [note] — resume every worker that stopped without DONE or crashed (e.g. after a network outage)
     need_herdr; NOTE=${1:-}; n=0
     for a in $(herdr agent list 2>/dev/null | WS="$WS" python3 -c 'import json,sys,os
@@ -1097,7 +1221,8 @@ PY
       if command -v caffeinate >/dev/null 2>&1 && [ -z "${CR_CAFF:-}" ]; then CR_CAFF=1 exec caffeinate -i "$0" tick --root "$ROOT" --loop $PASS; fi
       while true; do "$0" tick --root "$ROOT" $PASS; sleep 60; done
     fi
-    cr5 tick $PASS ;;
+    cr5 tick $PASS
+    case " $PASS " in *" --dry-run "*) ;; *) rooms_py refresh --quiet; "$0" strip-check --quiet >/dev/null 2>&1;; esac ;;   # (015) remote machines → logs/.machines-cache.json (+ [label] events) · relaunch a dead strip pager
   health) cr5 health "$@" ;;
   automations) cr5 auto list "$@" ;;   # (006) --all shows cancelled rows
   pause) cr5 pause "$@" ;;
