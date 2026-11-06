@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
-- 11-06 08:13 — Round A032 #2: 014 landed (TAKEN-OK proof: `tick.log 04:58 A033 prompt taken`). Rounds back to daily. Push a/b still open (now 0.2.1 material too).
+- 11-06 08:13 — Round A032 #2: 014 landed (TAKEN-OK proof: `tick.log 04:58 A033 prompt taken`). Rounds back to daily (A034; note: `wake 08:00 --repeat "weekdays 08:00"` armed its first fire on Sat 11-07 — first-fire ignores the weekdays filter; 0.2.1 nit). Push a/b still open (now 0.2.1 material too).
 - 11-06 04:55 — Round A032 #1 (fired 19 h late: Mac asleep; the new just-woke defer re-deferred at every dark wake → cap needed). Worker prompt-uptake died 08:33 to Connection error mid-result; code already live (`DRY A032 prompt taken`). Resumed with: cap deferrals at 3, write result file, TAKEN-OK proof.
 - 11-05 08:05 — Round A030 #5–#6. **Root cause of the 'batched wakes' found in the session jsonl:** the 10-30, 11-02 and 11-04 wakes each started a turn that died with `stopReason: error — Connection error.` (4 retries, 0 output) — the 08:00 wake hits the model seconds after the Mac wakes, before network/VPN is up; the user message stays queued and is re-sent with the next turn. Not a paste problem (L038 was wrong → L039). Brief 014 launched: tick detects error-aborted turns after a prompt and re-prompts.
 - 11-03 08:03 — Round A030 #2–#4 arrived together: the 10-30 and 11-02 wakes were pasted but never started a turn (pane input held a stray `wh`?). Room empty, nothing to land. **Gap for 0.2.1:** tick should verify the controller goes idle→working within ~3 min of a prompt, else log `prompt not taken` and re-paste (L038). 13 commits unpushed; push a/b still open.
