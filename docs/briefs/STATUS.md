@@ -4,9 +4,10 @@
 ## Workers
 | pane | agent | brief | state | result |
 |---|---|---|---|---|
-| wC:pP | prompt-uptake | 014-prompt-uptake | working | — |
 
 ## Notes
+- 11-06 08:13 — Round A032 #2: 014 landed (TAKEN-OK proof: `tick.log 04:58 A033 prompt taken`). Rounds back to daily. Push a/b still open (now 0.2.1 material too).
+- 11-06 04:55 — Round A032 #1 (fired 19 h late: Mac asleep; the new just-woke defer re-deferred at every dark wake → cap needed). Worker prompt-uptake died 08:33 to Connection error mid-result; code already live (`DRY A032 prompt taken`). Resumed with: cap deferrals at 3, write result file, TAKEN-OK proof.
 - 11-05 08:05 — Round A030 #5–#6. **Root cause of the 'batched wakes' found in the session jsonl:** the 10-30, 11-02 and 11-04 wakes each started a turn that died with `stopReason: error — Connection error.` (4 retries, 0 output) — the 08:00 wake hits the model seconds after the Mac wakes, before network/VPN is up; the user message stays queued and is re-sent with the next turn. Not a paste problem (L038 was wrong → L039). Brief 014 launched: tick detects error-aborted turns after a prompt and re-prompts.
 - 11-03 08:03 — Round A030 #2–#4 arrived together: the 10-30 and 11-02 wakes were pasted but never started a turn (pane input held a stray `wh`?). Room empty, nothing to land. **Gap for 0.2.1:** tick should verify the controller goes idle→working within ~3 min of a prompt, else log `prompt not taken` and re-paste (L038). 13 commits unpushed; push a/b still open.
 - 10-29 — psd-controller FYI: lancedocs snapshots now go to `~/.brain/memory-bank/personal/docs-archive/`, not `docs/` (public index). Not this room's workers — relayed to controller-w9 (lookbook) to record.
@@ -32,6 +33,7 @@ Results land in `docs/briefs/results/`; chat is ephemeral, files are the memory.
 ## Landed
 | when | brief | worker | result | one-liner |
 |---|---|---|---|---|
+| 11-06 | 014-prompt-uptake | prompt-uptake | [results/014-prompt-uptake.md](results/014-prompt-uptake.md) | uptake check + re-prompt · just-woke defer (capped 3) · strip ⚠ aborted turn · live TAKEN-OK · +40 lines |
 | 10-28 | 013-tobi-comparison | tobi-comparison | [results/013-tobi-comparison.md](results/013-tobi-comparison.md) | Lance-facing comparison, 110 lines; biggest weakness = no `core changed → restart` + untested auto-flush/S10 |
 | 10-27 | dream 2026-10-27-1740 | dreamer-1 | [dreams/2026-10-27-1740.md](memory/dreams/2026-10-27-1740.md) | 10 proposed → 6 promoted (D023–D026, L032–L033) · 4 rejected · 6 merges applied |
 | 10-27 | 012-close-the-loop | close-the-loop | [results/012-close-the-loop.md](results/012-close-the-loop.md) | all 011 blockers + 009 bugs 1–6 fixed; S3 stuck? **pass** (20m), S6 flush→compact **pass** (ext-triggered #2); +68 lines |
@@ -69,3 +71,4 @@ Results land in `docs/briefs/results/`; chat is ephemeral, files are the memory.
 | close-the-loop | 10-27 17:40 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-10-27T21-21-23-699Z_01a17f3d-42f3-74b4-bd50-4f030485d2ea.jsonl` |
 | dreamer-1 | 10-27 19:40 | dream judged | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-10-27T23-40-13-691Z_01a17fbc-5dfb-75e7-ba7c-45519921ac00.jsonl` |
 | tobi-comparison | 10-28 15:09 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-10-28T19-09-49-570Z_01a183eb-2a82-7422-b053-0add08e0c174.jsonl` |
+| prompt-uptake | 11-06 08:12 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-11-05T15-03-24-502Z_01a1ac3c-7056-713c-a760-51793f2c1de2.jsonl` |

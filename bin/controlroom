@@ -296,8 +296,42 @@ def prompt_controller(rid,text,st,dry,cap=True):   # §2.5 → ok | off | backlo
     if dry: return "ok"
     out=subprocess.run(["herdr","agent","prompt",tgt,text],capture_output=True,text=True,timeout=20) if status!="blocked" else None
     if out and out.returncode==0 and "agent_blocked" not in out.stdout+out.stderr:
-        st["prompts"].append(now); st.get("blocked",{}).pop(rid,None); st.get("blocked_toast",{}).pop(rid,None); open(os.path.join(LOGS,"agents.log"),"a").write(f"[{stamp()}] {rid} fired → prompted controller ({tgt}, was {status})\n"); return "ok"
+        st["prompts"].append(now); st.get("blocked",{}).pop(rid,None); st.get("blocked_toast",{}).pop(rid,None); open(os.path.join(LOGS,"agents.log"),"a").write(f"[{stamp()}] {rid} fired → prompted controller ({tgt}, was {status})\n")
+        p=ctl_jsonl(); m=re.search(r"\[(retry · )?"+re.escape(rid)+r"\b",text); st.setdefault("sent",{})[rid]={"ts":now,"off":os.path.getsize(p) if p and os.path.exists(p) else 0,"text":text,"tag":m.group(0) if m else text[:24]}; return "ok"   # (014) L039: remember what we sent so uptake() can see whether the turn ran; tag = `[A###` / `[retry · A###` (flush texts carry no id → their head)
     return stall("controller blocked","answer it (herdr agent focus controller) so automations can prompt it")
+def ctl_jsonl():   # (014) the controller's session jsonl (herdr agent list → agent_session.value for the pinned pane), or None
+    pid,_=controller(); a=next((x for x in RAW if x["pane_id"]==pid),None); return ((a or {}).get("agent_session") or {}).get("value")
+def just_woke():   # (014) L039: the 08:00 wake lands seconds after the Mac wakes, before network/VPN is back → tick defers prompt rows one tick. macOS kern.waketime; else a > 5 min gap in .tick.last
+    m=re.search(r"sec = (\d+)",sh(["sysctl","-n","kern.waketime"]))
+    try: last=float(open(HEART).read().split()[0])
+    except Exception: last=now
+    return now-int(m.group(1))<120 if m else now-last>300
+def uptake(st,dry,acts):   # (014) L039: for every prompt we sent, scan the controller jsonl past the send offset: user msg `[A###` → assistant entries. non-error/tool call → taken; all `stopReason: error` ≥ 3 min → aborted → re-prompt once; 2nd abort → toast once, retry every 15 min (D026: never spent); no user msg after 3 min (and not working) → paste lost → same
+    sent=st.get("sent",{}); path=ctl_jsonl() if sent else None
+    if not path: return
+    for rid,s in list(sent.items()):
+        seen=taken=False; errs=[]
+        try: f=open(path,errors="replace"); f.seek(s.get("off",0))
+        except OSError: continue
+        for line in f:
+            try: e=json.loads(line)
+            except Exception: continue
+            m=e.get("message",{}) if e.get("type")=="message" else {}; c=m.get("content")
+            if m.get("role")=="user" and s.get("tag",f"[{rid}") in (c if isinstance(c,str) else "".join(x.get("text","") for x in c or [] if isinstance(x,dict))): seen=True; errs=[]
+            elif m.get("role")=="assistant" and seen:
+                if m.get("stopReason")!="error" or any(x.get("type")=="toolCall" for x in c or []): taken=True; break
+                errs.append((iso_epoch(e.get("timestamp") or "") or now,m.get("errorMessage") or "error"))
+        if taken: sent.pop(rid); acts.append(f"{rid} prompt taken (controller turn ran)"); continue
+        if seen and errs and now-errs[-1][0]>=180: why=errs[-1][1]
+        elif not seen and now-s["ts"]>=180 and controller()[1]!="working": why="prompt not taken"
+        else: continue
+        n=s.get("retried",0)
+        if n>=1:   # (c) second abort: one toast, then keep trying every 15 min — the wake is never spent
+            if not s.get("toasted") and not dry: lib("note",f"controller: wake {rid} failed twice ({why})","the tick re-prompts every 15 min — check network/VPN and the controller pane","request"); s["toasted"]=True
+            if now-s.get("last",now-900)<900: continue
+        if prompt_controller(rid,f"[retry · {rid} · earlier turn aborted: {why}] "+s["text"],st,dry,cap=False)!="ok": continue   # bypasses the 6/h cap, counts toward it (D023)
+        sent.get(rid,s).update(text=s["text"],retried=n+1,toasted=s.get("toasted"),last=now); acts.append(f"{rid} turn aborted ({why}) → re-prompted"+(f" (retry {n+1})" if n else ""))
+        if not dry: open(os.path.join(LOGS,"agents.log"),"a").write(f"[{stamp()}] {rid} turn aborted ({why}) → re-prompted\n")
 # ---- end 006 helpers (tick steps 5–6 and the CLI arms are marked (006) below) ----
 # ---- compaction (008) ----  §7.4 shell fallback for the controller when extensions/controlroom.ts is absent, + `controlroom event`. Shared guard: logs/.flush-requested
 FLUSH_PCT=int(os.environ.get("CONTROLROOM_FLUSH_PCT",75)); FLUSHED=os.path.join(LOGS,".flush-requested"); ALIVE=os.path.join(LOGS,".ext-alive"); COMPS=os.path.join(LOGS,".compactions")
@@ -356,7 +390,7 @@ def parse_session(path,cache):
     except OSError: return None
     today=NOW.strftime("%Y-%m-%d"); c=cache.setdefault("sessions",{}).get(path)
     if c and c.get("size")==st.st_size and c.get("today")==today and c.get("win")==window(c.get("model")): c["mtime"]=st.st_mtime; return c   # (008) win: recompute when the model window changes
-    cost=toks=n=comp=ctx=0; ctoday=0.0; last_msg=last_write=first_ts=last_act=None; model=""
+    cost=toks=n=comp=ctx=0; ctoday=0.0; last_msg=last_write=first_ts=last_act=last_err=None; model=""
     for line in open(path,errors="replace"):
         try: e=json.loads(line)
         except Exception: continue
@@ -365,7 +399,7 @@ def parse_session(path,cache):
         if t=="message":
             m=e.get("message",{}); last_msg=ts or last_msg
             if m.get("role")=="assistant":
-                u=m.get("usage") or {}; cc=(u.get("cost") or {}).get("total") or 0; cost+=cc; toks+=u.get("totalTokens") or 0; n+=1; model=m.get("model") or model
+                u=m.get("usage") or {}; cc=(u.get("cost") or {}).get("total") or 0; cost+=cc; toks+=u.get("totalTokens") or 0; n+=1; model=m.get("model") or model; last_err=m.get("errorMessage") or "error" if m.get("stopReason")=="error" else None   # (014) strip shows an aborted last turn
                 ep=iso_epoch(ts); ctoday+=cc if ep and dt.datetime.fromtimestamp(ep).strftime("%Y-%m-%d")==today else 0
                 ctx=(u.get("input") or 0)+(u.get("cacheRead") or 0)+(u.get("cacheWrite") or 0)
                 if any(x.get("type")=="toolCall" and x.get("name") in ("write","edit","bash") for x in m.get("content",[])): last_write=ts
@@ -373,7 +407,7 @@ def parse_session(path,cache):
             u=e.get("usage") or {}; cost+=(u.get("cost") or {}).get("total") or 0; toks+=u.get("totalTokens") or 0; comp+=t=="compaction"
             if t=="compaction": ctx=0   # (008) context unknown until the next assistant message → ctx % drops, re-arming the flush guard
     c=dict(size=st.st_size,mtime=st.st_mtime,today=today,cost=round(cost,2),cost_today=round(ctoday,2),tokens=toks,turns=n,model=model,last_msg=last_msg,last_act=iso_epoch(last_act or ""),
-           last_write_tool=last_write,compactions=comp,ctx_pct=round(100*ctx/window(model)),win=window(model))
+           last_write_tool=last_write,compactions=comp,ctx_pct=round(100*ctx/window(model)),win=window(model),last_err=last_err)
     m=re.match(r"(\d{4}-\d\d-\d\d)T(\d\d)-(\d\d)-(\d\d)",os.path.basename(path)); c["start"]=(iso_epoch(f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}") if m else iso_epoch(first_ts or "")) or st.st_mtime
     cache["sessions"][path]=c; return c
 def health(name,status,path,brief,cache,toast=True,dry=False):
@@ -396,7 +430,7 @@ def health(name,status,path,brief,cache,toast=True,dry=False):
     else: h["lastline"]=None
     if flag=="stuck?" and toast and not dry and now-h.get("stuck_toast",0)>3600:
         lib("note",f"worker {name} STUCK?",f"working, but no write for {agem(lw_age)} and session quiet {agem(j_age)} — check pane / controlroom resume {name}","request"); h["stuck_toast"]=now
-    h.update(flag=flag,last_write=agem(lw_age),last_write_min=round(lw_age,1),session_idle=agem(j_age),session_idle_min=round(j_age,1),cost=s["cost"],cost_today=s["cost_today"],tokens=s["tokens"],turns=s["turns"],ctx_pct=s["ctx_pct"],model=s["model"],compactions=s["compactions"])
+    h.update(flag=flag,last_write=agem(lw_age),last_write_min=round(lw_age,1),session_idle=agem(j_age),session_idle_min=round(j_age,1),cost=s["cost"],cost_today=s["cost_today"],tokens=s["tokens"],turns=s["turns"],ctx_pct=s["ctx_pct"],model=s["model"],compactions=s["compactions"],last_err=s.get("last_err"))
     return h
 def fmt_health(n,h):
     c={"stuck?":RED,"spinning?":YEL}.get(h.get("flag"),"")
@@ -424,6 +458,10 @@ def tick_pass(dry):
     def hold(r,why): r["state"]="held"; changed.append(True); acts.append(f"{r['id']} {r['kind'].split()[0]} due → held ({why})")
     def fire_auto(r,text):   # (006) one wake/watch-path firing: prompt the controller when the row says so, else toast; blocked/backlog → row stays due
         k=r["kind"].split()[0]; res="toast"
+        if r["prompt"]=="yes" and woke and not capped:   # (014) just woke from sleep → the row stays due, fires next tick; dark-wake cycles starved A032 19 h → cap at 3 consecutive deferrals
+            if "deferring prompts 1 tick (just woke)" not in acts: acts.append("deferring prompts 1 tick (just woke)"); st["deferred"]=dfr+1
+            return
+        if r["prompt"]=="yes" and capped and not any(a.startswith("just-woke deferral cap") for a in acts): acts.append(f"just-woke deferral cap ({dfr} consecutive) reached → firing prompts anyway"); st["deferred"]=0
         if r["prompt"]=="yes":
             res=prompt_controller(r["id"],text+("" if k in ("flush","post-compaction") else "\n"+RULES),st,dry,cap=k not in ("flush","post-compaction"))   # (008) flush texts are self-contained · (012) 011 #6: flush rows bypass the 6/h cap
             if res in ("blocked","backlog"):
@@ -453,6 +491,8 @@ def tick_pass(dry):
             advance(r)
         if held: acts.append(f"play: {len(held)} held row(s) fired — "+", ".join(r["id"] for r in held)+(f" · {len(yes)} collapsed into one controller prompt" if yes and res=="ok" else f" · toast ({res})"))
     ags=agents(); brd=board(); comp_step(rows,st,cache,dry,acts,changed)   # (008) step 7: may add flush / post-compaction rows that step 5 fires below
+    woke=just_woke(); dfr=st.get("deferred",0); capped=woke and dfr>=3; woke and not capped or uptake(st,dry,acts)   # (014) step 5a: did the last prompts actually run? (skipped right after wake — the retry would hit the same dead window — unless the deferral cap is hit)
+    if not woke: st["deferred"]=0
     for r in rows:   # step 3
         kind,_,arg=r["kind"].partition(" ")
         if r["state"] not in ("armed","held"): continue
@@ -623,7 +663,7 @@ elif cmd=="strip":   # TICK line (+ COST line in detail) for status_text
         except Exception: fl="—"
         try: cn=json.load(open(COMPS)).get("count",0) if fs.get("ext") else H.get("compactions",0)
         except Exception: cn=H.get("compactions",0)
-        print(f" CTX   controller ctx {H.get('ctx_pct','?')}% · compactions {cn} · flushed {fl} · extension {'alive' if fs.get('ext') else 'absent (tick fallback)'}")
+        print(f" CTX   controller ctx {H.get('ctx_pct','?')}% · compactions {cn} · flushed {fl} · extension {'alive' if fs.get('ext') else 'absent (tick fallback)'}"+(f"   {RED}⚠ last turn aborted ({H['last_err']}){OFF}" if H.get("last_err") else ""))   # (014)
 elif cmd=="plist":   # launchd unit for the tick (§2.6); env verified by spike 005
     home=os.path.expanduser("~"); lab=args[0]
     print(f'''<?xml version="1.0" encoding="UTF-8"?>

@@ -22,5 +22,7 @@ Kinds: `watch <agent>` (worker finished/blocked/stuck) · `play` (end a pause) �
 | A028 | watch tobi-comparison | fired | — | — | 1 | no | integrate 013-tobi-comparison when DONE | launch 10-28 13:09 |
 | A029 | wake | cancelled | 2026-10-28 19:09 | every 2h | 2 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h | wake 10-28 13:09 · cancelled 10-28 17:21 |
 | A030 | wake | cancelled | 2026-11-06 08:00 | weekdays 08:00 | 6 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 10-28 17:21 · cancelled 11-05 08:03 |
-| A031 | watch prompt-uptake | armed | — | — | 0 | no | integrate 014-prompt-uptake when DONE | launch 11-05 08:03 |
-| A032 | wake | armed | 2026-11-05 10:03 | every 2h | 0 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h | wake 11-05 08:03 |
+| A031 | watch prompt-uptake | fired | — | — | 1 | no | integrate 014-prompt-uptake when DONE | resume 11-06 04:54 |
+| A032 | wake | cancelled | 2026-11-06 10:03 | every 2h | 2 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h | wake 11-05 08:03 · cancelled 11-06 08:12 |
+| A033 | wake | fired | 2026-11-06 04:57 | once | 1 | yes | 014 proof: reply TAKEN-OK | wake 11-06 04:57 |
+| A034 | wake | armed | 2026-11-07 08:00 | weekdays 08:00 | 0 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 11-06 08:12 |
