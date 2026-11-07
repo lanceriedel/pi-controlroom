@@ -971,8 +971,16 @@ def refresh(force=False,quiet=False):
         try: r=subprocess.run(["herdr","--machine",m["label"],"agent","list"],capture_output=True,text=True,timeout=max(0.5,deadline-time.time()))
         except subprocess.TimeoutExpired: return m,None,"timeout"
         except Exception as e: return m,None,str(e)[:60]
-        try: return m,json.loads(r.stdout)["result"]["agents"],None
+        try: ags=json.loads(r.stdout)["result"]["agents"]
         except Exception: return m,None,((r.stderr.strip().splitlines() or ["no json"])[-1])[:60]
+        # (014.5) this room only: keep remote agents whose workspace has a pane cwd ending in this repo's HOME-relative path (remote-host.md: "same relative layout"). No pane info → keep all (old behaviour).
+        try:
+            pr=subprocess.run(["herdr","--machine",m["label"],"pane","list"],capture_output=True,text=True,timeout=max(0.5,deadline-time.time()))
+            panes=json.loads(pr.stdout)["result"]["panes"]; rel=os.path.relpath(ROOT,os.path.expanduser("~")).rstrip("/")
+            wss={pn.get("workspace_id") for pn in panes if (pn.get("cwd") or "").rstrip("/").endswith("/"+rel)}
+            if panes: ags=[a for a in ags if a.get("workspace_id") in wss]
+        except Exception: pass
+        return m,ags,None
     with ThreadPoolExecutor(max_workers=max(1,len(ms))) as ex: res=list(ex.map(q,ms))
     events=[]
     for m,ags,err in res:
