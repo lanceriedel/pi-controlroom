@@ -33,12 +33,14 @@ note(){ echo "[$(date '+%m-%d %H:%M')] $1 — $2" >> "$LOG"; herdr notification 
 # verify <agent> → working | blocked | done | crashed | stalled. herdr's "done/idle" only means the prompt stopped;
 # stalled = the agent stopped with neither a DONE line nor an API error in its pane (needs a look or a resume).
 # a worker is done when its pane shows the "DONE <name>" line; crashed when the tail shows a proxy/API error.
+tgt(){ M=""; N=$1; case "$1" in */*) M="--machine ${1%%/*}"; N=${1#*/};; esac; }   # (015) `<machine>/<agent>` → herdr --machine <machine> … <agent>; sets M and N
 verify(){
-  live=$(herdr agent list 2>/dev/null | NAME="$1" python3 -c 'import json,sys,os
+  tgt "$1"; set -- "$N"
+  live=$(herdr $M agent list 2>/dev/null | NAME="$1" python3 -c 'import json,sys,os
 try: print(next(a["agent_status"] for a in json.load(sys.stdin)["result"]["agents"] if a.get("name")==os.environ["NAME"]))
 except Exception: print("")')
   case "$live" in working) echo working; return;; blocked) echo blocked; return;; esac
-  herdr agent read "$1" --source visible --lines 200 --format text 2>/dev/null | NAME="$1" python3 -c '
+  herdr $M agent read "$1" --source visible --lines 200 --format text 2>/dev/null | NAME="$1" python3 -c '
 import sys,re,os
 t=sys.stdin.read(); name=os.environ["NAME"]; tail="\n".join(t.splitlines()[-40:])
 if re.search(r"daily premium model limit|BadRequestError|RateLimitError|\"error\":\{|Error: [45]\d\d|overloaded_error|ECONNREFUSED", tail): print("crashed")
@@ -473,6 +475,9 @@ def tick_pass(dry):
         if r["state"] not in ("armed","held"): continue
         if kind=="watch":
             a=ags.get(arg)
+            if a is None and "/" in arg:   # (015) remote target: look it up in logs/.machines-cache.json (refreshed by this tick)
+                try: a=next((x for x in json.load(open(os.path.join(LOGS,".machines-cache.json")))["machines"].get(arg.split("/",1)[0],{}).get("agents",[]) if x.get("name")==arg.split("/",1)[1]),None)
+                except Exception: a=None
             if a is None:
                 if row_age(r)>180: fire(r,f"watch {arg}: agent not in herdr (retired / Herdr restarted) → toast"); note(f"worker {arg} GONE","not in herdr agent list — retired or Herdr restarted; resume from STATUS.md","request")
                 continue
@@ -979,6 +984,7 @@ def refresh(force=False,quiet=False):
             if is_ctl(n,lab) or prev is None or prev==st: continue
             if st=="blocked": events.append((f"[{lab}] worker {n} NEEDS YOU",f"herdr --machine {lab} agent focus {n}","request"))
             elif prev=="working" and st in ("done","idle"): events.append((f"[{lab}] worker {n}: finished ({st})",f"controlroom verify {lab}/{n} · results are in the remote clone","done"))
+        if old and old.get("reachable") is False: events.append((f"[{lab}] reachable again",f"down {max(1,int((now-(old.get('since') or now))//60))}m","done"))
         c["machines"][lab]={"target":m.get("target",""),"reachable":True,"since":old.get("since") if old.get("reachable") else now,"last_ok":now,"agents":new,"err":None}
     c["updated"]=now; save(c)
     for t,b,s in events: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",t,b,s],env=dict(os.environ,ROOT=ROOT),timeout=10)
@@ -1022,11 +1028,19 @@ elif cmd in ("header","agents"):
     def lastline(n):
         try: return subprocess.run([SELF,"lastline",n],capture_output=True,text=True,timeout=5).stdout.strip()
         except Exception: return ""
+    DONE_MAX=int(os.environ.get("CR_STRIP_DONE_MAX",3))
     def row(st,n,pane,ctl,prim,dim=False,extra=""):
         c=DIM if dim else COL.get(st,""); print(f"  {'▶' if ctl else ' '}{c}{st:<8}{OFF} {DIM if dim else ''}{n:<18} {pane}{OFF}"+(f" {BOLD}PRIMARY{OFF}" if prim else "")+extra)
+    def render(rows):   # controllers → non-done (working/blocked/stalled/idle/…) → at most DONE_MAX done + `… +K done`; so a remote group always fits on a short strip
+        ctl=[r for r in rows if r["ctl"]]; live=[r for r in rows if not r["ctl"] and r["st"]!="done"]; done=[r for r in rows if not r["ctl"] and r["st"]=="done"]
+        for r in ctl+live+done[:DONE_MAX]:
+            row(r["st"],r["n"],r["pane"],r["ctl"],r["prim"],r.get("dim",False),r.get("extra",""))
+            if r.get("ll"): print(f"            {CYN}→ {r['ll']}{OFF}")
+        if len(done)>DONE_MAX: print(f"   {DIM}… +{len(done)-DONE_MAX} done{OFF}  {DIM}({(lambda t: t if len(t)<=100 else t[:97]+'…')(', '.join(r['n'] for r in done[DONE_MAX:]))}){OFF}")
     print(" AGENTS"+("  (detail on — Ctrl+B D to toggle)" if detail else "  (Ctrl+B D for detail)")+("  ▶ = controller" if ms else ""))
     if ms: print(f"   {BOLD}local ({socket.gethostname().split('.')[0]}){OFF} · {len(local)} agents")
-    for a in sorted(local,key=lambda a: not lctl(a)):
+    rows=[]
+    for a in local:
         n=a.get("name") or a["pane_id"]; st=a["agent_status"]; h=H.get(n,{})
         if st=="working" and h.get("flag"): st=h["flag"]
         if st in ("done","idle") and a.get("name"):
@@ -1034,17 +1048,13 @@ elif cmd in ("header","agents"):
             except Exception: v=""
             st={"done":"done","crashed":"crashed","stalled":"stalled"}.get(v,st)
         ex=(f"   {DIM}{tasks.get(n,'')[:90]}{OFF}" if detail and tasks.get(n) else "")+(f"   {DIM}last write {h['last_write']} · ctx {h.get('ctx_pct','?')}%{OFF}" if detail and h.get("last_write") else "")
-        row(st,n,a["pane_id"],lctl(a),lctl(a) and primary=="local",extra=ex)
-        if detail and st in ("working","stuck?","spinning?"):
-            ll=lastline(n)
-            if ll: print(f"            {CYN}→ {ll}{OFF}")
+        rows.append(dict(st=st,n=n,pane=a["pane_id"],ctl=lctl(a),prim=lctl(a) and primary=="local",extra=ex,ll=lastline(n) if detail and st in ("working","stuck?","spinning?") else ""))
+    render(rows)
     if not local and not ms: print("   (no agents in this workspace)")
-    for lab,e in ms.items():   # one group per saved machine; pane ids prefixed `<label>/`; unreachable → greyed last-known agents
+    for lab,e in ms.items():   # one group per saved machine, always rendered; pane ids prefixed `<label>/`; unreachable → greyed last-known agents
         ag=e.get("agents",[]); ok=e.get("reachable")
         print(f"   {BOLD}{lab}{OFF} · "+(f"reachable · {len(ag)} agents" if ok else f"{RED}unreachable{OFF} (since {hhmm(e.get('since'))}{' · '+e['err'] if e.get('err') else ''})"+(" · last known:" if ag else "")))
-        for a in sorted(ag,key=lambda a: not is_ctl(a["name"],lab,ctls)):
-            n=a["name"]; c_=is_ctl(n,lab,ctls)
-            row(a["agent_status"],n,f"{lab}/{a['pane_id']}",c_,c_ and primary==lab,dim=not ok,extra=(f"   {DIM}{tasks.get(n,'')[:90]}{OFF}" if detail and tasks.get(n) else ""))
+        render([dict(st=a["agent_status"],n=a["name"],pane=f"{lab}/{a['pane_id']}",ctl=is_ctl(a["name"],lab,ctls),prim=is_ctl(a["name"],lab,ctls) and primary==lab,dim=not ok,extra=(f"   {DIM}{tasks.get(a['name'],'')[:90]}{OFF}" if detail and tasks.get(a["name"]) else "")) for a in ag])
         if not ag and ok: print(f"   {DIM}(no named agents){OFF}")
 else: print(f"rooms_py: unknown {cmd}",file=sys.stderr); sys.exit(1)
 PY
@@ -1127,7 +1137,7 @@ print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status" and str
     for a in "$@"; do (
       sleep 90   # grace period: ignore the pre-prompt idle right after launch
       while true; do
-        st=$(herdr agent wait "$a" --until done --until blocked --until idle --timeout 3600000 2>/dev/null | python3 -c 'import json,sys
+        tgt "$a"; st=$(herdr $M agent wait "$N" --until done --until blocked --until idle --timeout 3600000 2>/dev/null | python3 -c 'import json,sys
 try: print(json.load(sys.stdin)["result"]["agent"]["agent_status"])
 except Exception: print("timeout")')
         case "$st" in
@@ -1143,7 +1153,7 @@ except Exception: print("timeout")')
       done ) & done; wait ;;
   resume)   # controlroom resume <agent> [extra instruction] — re-prompt a stopped worker and re-arm the watcher
     need_herdr; NAME=${1:-}; EXTRA=${2:-}; [ -z "$NAME" ] && { echo "usage: controlroom resume <agent> [note]"; exit 2; }
-    herdr agent prompt "$NAME" "Resume exactly where you stopped (your previous call failed or was cut off). Check your persisted files and logs first; do not redo finished steps. Every number in your results file must come from your own outputs; if a step did not complete, say so plainly instead of estimating. Finish the brief and reply with the single line: DONE $NAME. $EXTRA" >/dev/null 2>&1
+    tgt "$NAME"; herdr $M agent prompt "$N" "Resume exactly where you stopped (your previous call failed or was cut off). Check your persisted files and logs first; do not redo finished steps. Every number in your results file must come from your own outputs; if a step did not complete, say so plainly instead of estimating. Finish the brief and reply with the single line: DONE $NAME. $EXTRA" >/dev/null 2>&1
     row=$(cr5 auto arm "$NAME" "" "resume $(date '+%m-%d %H:%M')")   # (005) re-arm the watch row instead of spawning a watcher
     note "resumed $NAME" "watch row re-armed" none; echo "$NAME resumed, ${row:-watch row armed}" ;;
   strip-restart)   # controlroom strip-restart [--pane <id>] — restart the status pager in THIS workspace's `status` pane (015: two rooms on one server share the label; never touch the other room's strip)
@@ -1230,7 +1240,7 @@ PY
   tick-install) tick_install ;;
   tick-uninstall) tick_uninstall ;;
   lastline)   # controlroom lastline <agent> — last meaningful pane line (used by the strip detail and by health's stuck? check)
-    [ -n "${1:-}" ] || { echo "usage: controlroom lastline <agent>"; exit 2; }; herdr agent read "$1" --source visible --lines 50 --format text 2>/dev/null | python3 -c '
+    [ -n "${1:-}" ] || { echo "usage: controlroom lastline <agent>"; exit 2; }; tgt "$1"; herdr $M agent read "$N" --source visible --lines 50 --format text 2>/dev/null | python3 -c '
 import sys,re
 lines=[l.rstrip() for l in sys.stdin.read().splitlines() if l.strip() and not set(l.strip())<=set("\u2500\u2550-\u2502\u250c\u2510\u2514\u2518 ")]
 cmds=[l.strip() for l in lines if re.match(r"^\s*\$ ", l)]
