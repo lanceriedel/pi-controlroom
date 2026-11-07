@@ -181,35 +181,37 @@ Workers on a second machine survive your laptop sleeping; the **controller does 
 shows **one picture** — local and remote agents side by side:
 
 ```
- CONTROL ROOM  Sat 09:08  my-project   (say "ok" in CONTROLLER to integrate · blocked = needs you)
- ROOMS  local ▶controller  PRIMARY  ⇄ <label> ▶<project>-remote · MODE: local · sync: HEAD a1ee2c8 · ahead 0 · behind 0 (origin, last fetch)
+ CONTROL ROOM  Sat 09:11  my-project   (say "ok" in CONTROLLER to integrate · blocked = needs you)
+ ROOMS  local ▶controller ‹PRIMARY› ⇄ <label> ▶<project>-remote · MODE: local · sync: HEAD a1ee2c8 · ahead 0 · behind 0 (origin, last fetch)
  AGENTS  (Ctrl+B D for detail)  ▶ = controller
- ▌ LOCAL · laptop · 14 agents                                   ← full-width bar, dim blue background
-  ▶  idle     controller         wB:p1  PRIMARY                 ← PRIMARY is a reverse-video chip
-  │  working  cr-upstream        wB:pF
+▌ LOCAL · laptop · 14 agents ──────────────────────────────────────   ← ▌ + host name in the accent (blue), dim rule to the width
+  ▶  idle     controller         wB:p1 ‹PRIMARY›                        ← ▶ bright accent · ‹PRIMARY› bold accent, no fill
+  │  working  cr-upstream        wB:pF                                  ← │ dim accent gutter shows the group's extent
   │  done     foundation         wB:p3
   │  done     tpuf-eval          wB:p4
   │  done     vantage-crawl      wB:p5
   │  … +9 done  (doc-editor, advisor-brief, nvidia-sanitize, …)
 
- ▌ <LABEL> · reachable · 2 agents                               ← dim green bar; red when unreachable
+▌ <LABEL> · reachable · 2 agents ──────────────────────────────────    ← green accent; red + "unreachable since …" when down
   ▶  idle     <project>-remote   w1:p7
   │  working  long-job           w1:pA
 
- TICK  last 09:08:11 · ok
+ TICK  last 09:11:12 · ok
 ```
 
 - **ROOMS** (only when `herdr machine list` has rows): each room's controller (`▶`), which one is **PRIMARY** (from the
   `MODE:` line in `STATUS.md`), local git `HEAD · ahead/behind origin` (no fetch — as of the last one) and the last
   `## HANDOFF` time from the board. Nothing shells out to remote git. When the line doesn't fit, `sync:` drops to a
   second dim line.
-- **AGENTS** is grouped by host: a full-width bar per group (`▌ LOCAL · <hostname>` on dim blue, `▌ <LABEL> · reachable`
-  on dim green, `UNREACHABLE since 18:02 · timeout` on dim red with last-known agents greyed), rows under it carry a
-  coloured gutter `│` (`▶` for controllers) so the group's extent is visible, a blank line separates groups, and pane
-  ids are as on that machine (the bar names it). Within a group: controllers, then anything not `done`, then at most 3
-  `done` agents followed by a dim `… +K done` (`CR_STRIP_DONE_MAX`) — so a remote group is always visible on an 18-row
-  strip. `NO_COLOR=1` renders the bars as `══ LOCAL · … ══` rules. The pager passes its width down as `COLUMNS`; from a
-  plain terminal `COLUMNS=100 controlroom status` does the same.
+- **AGENTS** is grouped by host: a header per group — `▌ LOCAL · <hostname> · N agents ───` / `▌ <LABEL> · reachable ···` /
+  `▌ <LABEL> · unreachable since 18:02 · timeout · last known:` with greyed agents — where only `▌` and the host name take
+  the group's **foreground** accent (blue local · green remote · red unreachable) and the rule is dim; everything else is
+  the terminal's default colour, so it reads on any theme (no background or inverse fills anywhere). Rows carry a dim `│`
+  gutter (`▶` bright for controllers), a blank line separates groups, pane ids are as on that machine. Within a group:
+  controllers, then anything not `done`, then at most 3 `done` agents followed by a dim `… +K done` (`CR_STRIP_DONE_MAX`) —
+  so a remote group is always visible on an 18-row strip. Controllers are exempt from the `stalled` remap (idle after
+  talking to you ≠ a stopped worker). `NO_COLOR=1` drops the escapes. The pager passes its width down as `COLUMNS`; from
+  a plain terminal `COLUMNS=100 controlroom status` does the same.
 - **EVENTS** merges remote transitions: `[<label>] worker x: finished (done)`, `[<label>] worker x NEEDS YOU`,
   `[<label>] reachable again — down 12m` — the tick diffs `herdr --machine <label> agent list` against
   `logs/.machines-cache.json` every pass. Controllers are excluded (they go idle after every prompt).
