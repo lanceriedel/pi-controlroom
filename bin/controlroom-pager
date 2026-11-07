@@ -12,9 +12,12 @@ PERIOD = 15.0        # regenerate at most this often
 ANSI = re.compile(r"\x1b\[([0-9;]*)m")
 
 WIDTH = {"w": 0}
+# (014.2) pin the workspace key once: env, else derived from HERDR_PANE_ID, else "default" — writer (d / prefix+d) and reader (status) must agree or detail flips back on refresh
+_ws = os.environ.get("HERDR_WORKSPACE_ID") or (os.environ.get("HERDR_PANE_ID", "").split(":")[0] if os.environ.get("HERDR_PANE_ID") else "")
+WSENV = {"HERDR_WORKSPACE_ID": _ws} if _ws else {}
 
 def generate():
-    env = dict(os.environ, COLUMNS=str(WIDTH["w"] or 120))   # (015) status_text pads group headers to the strip's width
+    env = dict(os.environ, COLUMNS=str(WIDTH["w"] or 120), **WSENV)   # (015) status_text pads group headers to the strip's width
     try:
         out = subprocess.run(["controlroom", "status"], capture_output=True, text=True, timeout=40, env=env).stdout
     except Exception as e:
@@ -107,7 +110,7 @@ def main(stdscr):
         elif ch == ord("g"): state["offset"] = 0
         elif ch == ord("G"): state["offset"] = 10**9
         elif ch == ord("r"): state["force"] = True
-        elif ch == ord("d"): subprocess.run(["controlroom", "detail"], capture_output=True); state["force"] = True
+        elif ch == ord("d"): subprocess.run(["controlroom", "detail"], capture_output=True, env=dict(os.environ, **WSENV)); state["force"] = True   # (014.2) same ws key as status
         elif ch == curses.KEY_MOUSE:
             try:
                 _, _, _, _, b = curses.getmouse()

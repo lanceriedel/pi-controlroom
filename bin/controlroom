@@ -25,6 +25,7 @@ set -u
 CMD=${1:-help}; shift || true
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 LOG="$ROOT/logs/agents.log"; mkdir -p "$ROOT/logs" "$HOME/.config/controlroom"
+[ -z "${HERDR_WORKSPACE_ID:-}" ] && [ -n "${HERDR_PANE_ID:-}" ] && export HERDR_WORKSPACE_ID="${HERDR_PANE_ID%%:*}"   # (014.2) derive ws from the pane id when Herdr didn't pass it — detail flag + WS must key the same everywhere
 DETAIL_FLAG="$HOME/.config/controlroom/detail.${HERDR_WORKSPACE_ID:-default}"
 WS=${HERDR_WORKSPACE_ID:-}
 HUMAN=${CONTROLROOM_HUMAN:-YOU}   # name shown in "WAITING ON …"; set CONTROLROOM_HUMAN=Lance in your shell if you like
@@ -1189,7 +1190,7 @@ except Exception: print("timeout")')
     need_herdr; pane=$(strip_pane "$@")
     [ -z "$pane" ] && { echo "no pane labelled status in workspace ${WS:-?} (pass --pane <id>)"; exit 1; }
     herdr pane send-keys "$pane" q >/dev/null 2>&1; sleep 0.5
-    herdr pane run "$pane" "clear; cd '$ROOT' && controlroom statusbar" >/dev/null 2>&1 && echo "status pager restarted in $pane" ;;
+    herdr pane run "$pane" "clear; cd '$ROOT' && HERDR_WORKSPACE_ID=${pane%%:*} HERDR_PANE_ID=$pane controlroom statusbar" >/dev/null 2>&1 && echo "status pager restarted in $pane" ;;
   strip-check)   # controlroom strip-check [--pane <id>] [--quiet] [--force] — is the pager alive in this workspace's `status` pane? If the pane shows a bare shell (Herdr restart), relaunch it. The tick calls this every pass.
     QUIET=0; FORCE=0; for a in "$@"; do case "$a" in --quiet) QUIET=1;; --force) FORCE=1;; esac; done
     [ "${HERDR_ENV:-}" = 1 ] || exit 0; pane=$(strip_pane "$@"); [ -z "$pane" ] && { [ "$QUIET" = 1 ] || echo "strip: no pane labelled status in workspace ${WS:-?}"; exit 0; }
@@ -1204,7 +1205,7 @@ else: print("busy")')
       busy) if [ "$FORCE" = 1 ]; then st=dead; else [ "$QUIET" = 1 ] || echo "strip $pane: something else is running there — not relaunching (--force to override)"; fi;;
     esac
     if [ "$st" = dead ]; then
-      herdr pane run "$pane" "clear; cd '$ROOT' && controlroom statusbar" >/dev/null 2>&1 && { echo "[$(date '+%m-%d %H:%M')] strip relaunched in $pane (pane showed no pager)" >> "$LOG"; echo "strip $pane: pager relaunched"; }
+      herdr pane run "$pane" "clear; cd '$ROOT' && HERDR_WORKSPACE_ID=${pane%%:*} HERDR_PANE_ID=$pane controlroom statusbar" >/dev/null 2>&1 && { echo "[$(date '+%m-%d %H:%M')] strip relaunched in $pane (pane showed no pager)" >> "$LOG"; echo "strip $pane: pager relaunched"; }
     fi ;;
   resume-stalled)  # controlroom resume-stalled [note] — resume every worker that stopped without DONE or crashed (e.g. after a network outage)
     need_herdr; NOTE=${1:-}; n=0
