@@ -1009,12 +1009,34 @@ elif cmd in ("header","agents"):
     def lctl(a): return a["pane_id"]==pid or is_ctl(a.get("name"),"local",ctls)
     primary="local" if mode in (None,"local") else (mode if mode in ms else (next(iter(ms)) if mode=="remote" and len(ms)==1 else None))
     rctl={lab:next((a["name"] for a in e.get("agents",[]) if is_ctl(a["name"],lab,ctls)),ctls.get(lab)) for lab,e in ms.items()}
+    import shutil
+    try: W=int(os.environ.get("COLUMNS") or 0) or shutil.get_terminal_size((120,20)).columns
+    except Exception: W=120
+    W=max(40,W); NOCOL=bool(os.environ.get("NO_COLOR"))
+    strip=lambda t: re.sub(r"\x1b\[[0-9;]*m","",t)
+    def vlen(t): return len(strip(t))
+    def cut(t,w):   # truncate a styled line to w visible columns (keeps escapes, appends OFF)
+        out=""; n=0
+        for part in re.split(r"(\x1b\[[0-9;]*m)",t):
+            if part.startswith("\x1b"): out+=part; continue
+            take=part[:max(0,w-n)]; out+=take; n+=len(take)
+            if n>=w: break
+        return out+("" if NOCOL else OFF)
+    if NOCOL: RED=YEL=GRN=CYN=DIM=BOLD=OFF=""; COL.clear()
+    THEME={"local":("\033[48;5;17m","\033[38;5;33m"),"remote":("\033[48;5;22m","\033[38;5;34m"),"down":("\033[48;5;52m","\033[38;5;160m")}   # (bar bg, gutter fg)
+    def bar(kind,text):   # full-width group header: inverse/bg bar with a left ▌; NO_COLOR → ══ TEXT ══ rule
+        if NOCOL: return (f"══ {text} ").ljust(W,"═")[:W]
+        bg,_=THEME[kind]; body=f" ▌ {text} "; return f"{bg}{BOLD}{body}{' '*max(0,W-vlen(body))}{OFF}"
+    def gutter(kind,ctl): return ("▶" if ctl else "│") if NOCOL else f"{THEME[kind][1]}{'▶' if ctl else '│'}{OFF}"
+    CHIP=" PRIMARY " if NOCOL else f"\033[7m PRIMARY {OFF}"
     if cmd=="header":
         if not ms: sys.exit(0)
         lc=next((a.get("name") or a["pane_id"] for a in local if lctl(a)),ctls.get("local") or "—")
-        parts=[f"local ▶{lc}"+(f" {BOLD}(PRIMARY){OFF}" if primary=="local" else "")]
-        for lab in ms: parts.append(f"{lab} ▶{rctl.get(lab) or '—'}"+(f" {BOLD}(PRIMARY){OFF}" if primary==lab else "")+("" if ms[lab].get("reachable") else f" {RED}unreachable{OFF}"))
-        print(f" ROOMS  {' ⇄ '.join(parts)} · MODE: {mode or '— (no MODE: line)'} · sync: {sync_line() or 'not a git checkout'}"+(f" · last HANDOFF {handoff}" if handoff else ""))
+        parts=[f"local ▶{lc}"+(f" {CHIP}" if primary=="local" else "")]
+        for lab in ms: parts.append(f"{lab} ▶{rctl.get(lab) or '—'}"+(f" {CHIP}" if primary==lab else "")+("" if ms[lab].get("reachable") else f" {RED}unreachable{OFF}"))
+        rooms=f" ROOMS  {' ⇄ '.join(parts)} · MODE: {mode or '— (no MODE: line)'}"; sync=f"sync: {sync_line() or 'not a git checkout'}"+(f" · last HANDOFF {handoff}" if handoff else "")
+        if vlen(rooms)+3+len(sync)<=W: print(f"{rooms} · {DIM}{sync}{OFF}")
+        else: print(cut(rooms,W)); print(cut(f"        {DIM}{sync}{OFF}",W))   # (015 §7) sync drops to its own dim line when the first doesn't fit
         sys.exit(0)
     # ---- AGENTS ----
     tasks={}
@@ -1029,16 +1051,18 @@ elif cmd in ("header","agents"):
         try: return subprocess.run([SELF,"lastline",n],capture_output=True,text=True,timeout=5).stdout.strip()
         except Exception: return ""
     DONE_MAX=int(os.environ.get("CR_STRIP_DONE_MAX",3))
-    def row(st,n,pane,ctl,prim,dim=False,extra=""):
-        c=DIM if dim else COL.get(st,""); print(f"  {'▶' if ctl else ' '}{c}{st:<8}{OFF} {DIM if dim else ''}{n:<18} {pane}{OFF}"+(f" {BOLD}PRIMARY{OFF}" if prim else "")+extra)
-    def render(rows):   # controllers → non-done (working/blocked/stalled/idle/…) → at most DONE_MAX done + `… +K done`; so a remote group always fits on a short strip
+    def row(kind,st,n,pane,ctl,prim,dim=False,extra=""):
+        c=DIM if dim else COL.get(st,""); g=gutter(kind,ctl) if kind else (" ▶"[ctl] if not NOCOL or True else " ")
+        lead=f"  {g}  " if kind else ("  ▶" if ctl else "   ")   # grouped: gutter glyph in the group colour, text at col 5 · flat (single machine): the old layout
+        print(cut(f"{lead}{c}{st:<8}{OFF} {DIM if dim else ''}{n:<18} {pane}{OFF}"+(f" {CHIP}" if prim else "")+extra,W))
+    def render(kind,rows):   # controllers → non-done (working/blocked/stalled/idle/…) → at most DONE_MAX done + `… +K done`; so a remote group always fits on a short strip
         ctl=[r for r in rows if r["ctl"]]; live=[r for r in rows if not r["ctl"] and r["st"]!="done"]; done=[r for r in rows if not r["ctl"] and r["st"]=="done"]
         for r in ctl+live+done[:DONE_MAX]:
-            row(r["st"],r["n"],r["pane"],r["ctl"],r["prim"],r.get("dim",False),r.get("extra",""))
-            if r.get("ll"): print(f"            {CYN}→ {r['ll']}{OFF}")
-        if len(done)>DONE_MAX: print(f"   {DIM}… +{len(done)-DONE_MAX} done{OFF}  {DIM}({(lambda t: t if len(t)<=100 else t[:97]+'…')(', '.join(r['n'] for r in done[DONE_MAX:]))}){OFF}")
+            row(kind,r["st"],r["n"],r["pane"],r["ctl"],r["prim"],r.get("dim",False),r.get("extra",""))
+            if r.get("ll"): print(cut(f"            {CYN}→ {r['ll']}{OFF}",W))
+        if len(done)>DONE_MAX: print(cut(f"  {gutter(kind,False) if kind else ' '}  {DIM}… +{len(done)-DONE_MAX} done  ({', '.join(r['n'] for r in done[DONE_MAX:])}){OFF}",W))
     print(" AGENTS"+("  (detail on — Ctrl+B D to toggle)" if detail else "  (Ctrl+B D for detail)")+("  ▶ = controller" if ms else ""))
-    if ms: print(f"   {BOLD}local ({socket.gethostname().split('.')[0]}){OFF} · {len(local)} agents")
+    if ms: print(bar("local",f"LOCAL · {socket.gethostname().split('.')[0]} · {len(local)} agents"))
     rows=[]
     for a in local:
         n=a.get("name") or a["pane_id"]; st=a["agent_status"]; h=H.get(n,{})
@@ -1049,13 +1073,14 @@ elif cmd in ("header","agents"):
             st={"done":"done","crashed":"crashed","stalled":"stalled"}.get(v,st)
         ex=(f"   {DIM}{tasks.get(n,'')[:90]}{OFF}" if detail and tasks.get(n) else "")+(f"   {DIM}last write {h['last_write']} · ctx {h.get('ctx_pct','?')}%{OFF}" if detail and h.get("last_write") else "")
         rows.append(dict(st=st,n=n,pane=a["pane_id"],ctl=lctl(a),prim=lctl(a) and primary=="local",extra=ex,ll=lastline(n) if detail and st in ("working","stuck?","spinning?") else ""))
-    render(rows)
+    render("local" if ms else "",rows)
     if not local and not ms: print("   (no agents in this workspace)")
-    for lab,e in ms.items():   # one group per saved machine, always rendered; pane ids prefixed `<label>/`; unreachable → greyed last-known agents
-        ag=e.get("agents",[]); ok=e.get("reachable")
-        print(f"   {BOLD}{lab}{OFF} · "+(f"reachable · {len(ag)} agents" if ok else f"{RED}unreachable{OFF} (since {hhmm(e.get('since'))}{' · '+e['err'] if e.get('err') else ''})"+(" · last known:" if ag else "")))
-        render([dict(st=a["agent_status"],n=a["name"],pane=f"{lab}/{a['pane_id']}",ctl=is_ctl(a["name"],lab,ctls),prim=is_ctl(a["name"],lab,ctls) and primary==lab,dim=not ok,extra=(f"   {DIM}{tasks.get(a['name'],'')[:90]}{OFF}" if detail and tasks.get(a["name"]) else "")) for a in ag])
-        if not ag and ok: print(f"   {DIM}(no named agents){OFF}")
+    for lab,e in ms.items():   # one group per saved machine, always rendered; pane ids as on that machine (the bar names it); unreachable → red bar, last-known agents greyed
+        ag=e.get("agents",[]); ok=e.get("reachable"); kind="remote" if ok else "down"
+        print(); print(bar(kind,f"{lab.upper()} · "+(f"reachable · {len(ag)} agents" if ok else f"UNREACHABLE since {hhmm(e.get('since'))}{' · '+e['err'] if e.get('err') else ''}"+(" · last known:" if ag else ""))))
+        render(kind,[dict(st=a["agent_status"],n=a["name"],pane=a["pane_id"],ctl=is_ctl(a["name"],lab,ctls),prim=is_ctl(a["name"],lab,ctls) and primary==lab,dim=not ok,extra=(f"   {DIM}{tasks.get(a['name'],'')[:90]}{OFF}" if detail and tasks.get(a["name"]) else "")) for a in ag])
+        if not ag and ok: print(f"  {gutter(kind,False)}  {DIM}(no named agents){OFF}")
+    if ms: print()
 else: print(f"rooms_py: unknown {cmd}",file=sys.stderr); sys.exit(1)
 PY
 }
