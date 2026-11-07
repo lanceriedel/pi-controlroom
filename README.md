@@ -173,6 +173,91 @@ Keys inside the strip: wheel / arrows / `j` `k` / PgUp PgDn / space · `g` top �
 
 ---
 
+## Multiple machines
+
+Workers on a second machine survive your laptop sleeping; the **controller does not**, unless it also runs remotely
+(see [Two controllers](#two-controllers)). Herdr does the plumbing: save the host once with
+`herdr machine add <ssh-target> --label <label>`, and every CLI call takes `herdr --machine <label> …`. The strip then
+shows **one picture** — local and remote agents side by side:
+
+```
+ CONTROL ROOM  Sat 09:08  my-project   (say "ok" in CONTROLLER to integrate · blocked = needs you)
+ ROOMS  local ▶controller  PRIMARY  ⇄ <label> ▶<project>-remote · MODE: local · sync: HEAD a1ee2c8 · ahead 0 · behind 0 (origin, last fetch)
+ AGENTS  (Ctrl+B D for detail)  ▶ = controller
+ ▌ LOCAL · laptop · 14 agents                                   ← full-width bar, dim blue background
+  ▶  idle     controller         wB:p1  PRIMARY                 ← PRIMARY is a reverse-video chip
+  │  working  cr-upstream        wB:pF
+  │  done     foundation         wB:p3
+  │  done     tpuf-eval          wB:p4
+  │  done     vantage-crawl      wB:p5
+  │  … +9 done  (doc-editor, advisor-brief, nvidia-sanitize, …)
+
+ ▌ <LABEL> · reachable · 2 agents                               ← dim green bar; red when unreachable
+  ▶  idle     <project>-remote   w1:p7
+  │  working  long-job           w1:pA
+
+ TICK  last 09:08:11 · ok
+```
+
+- **ROOMS** (only when `herdr machine list` has rows): each room's controller (`▶`), which one is **PRIMARY** (from the
+  `MODE:` line in `STATUS.md`), local git `HEAD · ahead/behind origin` (no fetch — as of the last one) and the last
+  `## HANDOFF` time from the board. Nothing shells out to remote git. When the line doesn't fit, `sync:` drops to a
+  second dim line.
+- **AGENTS** is grouped by host: a full-width bar per group (`▌ LOCAL · <hostname>` on dim blue, `▌ <LABEL> · reachable`
+  on dim green, `UNREACHABLE since 18:02 · timeout` on dim red with last-known agents greyed), rows under it carry a
+  coloured gutter `│` (`▶` for controllers) so the group's extent is visible, a blank line separates groups, and pane
+  ids are as on that machine (the bar names it). Within a group: controllers, then anything not `done`, then at most 3
+  `done` agents followed by a dim `… +K done` (`CR_STRIP_DONE_MAX`) — so a remote group is always visible on an 18-row
+  strip. `NO_COLOR=1` renders the bars as `══ LOCAL · … ══` rules. The pager passes its width down as `COLUMNS`; from a
+  plain terminal `COLUMNS=100 controlroom status` does the same.
+- **EVENTS** merges remote transitions: `[<label>] worker x: finished (done)`, `[<label>] worker x NEEDS YOU`,
+  `[<label>] reachable again — down 12m` — the tick diffs `herdr --machine <label> agent list` against
+  `logs/.machines-cache.json` every pass. Controllers are excluded (they go idle after every prompt).
+- **Budget**: all remote queries run in parallel with a **3 s total** budget (`CONTROLROOM_MACHINES_BUDGET`) and are
+  cached for 60 s (`CONTROLROOM_MACHINES_TTL`); the strip only re-queries when no tick has refreshed the cache.
+  `controlroom machines [--refresh]` prints the cache.
+- **Remote targets**: `controlroom verify|lastline|resume <label>/<agent>` and `controlroom watch <label>/<agent>`
+  translate to `herdr --machine <label>`; a `watch <label>/<agent>` row in `AUTOMATIONS.md` is resolved from the cache.
+  `controlroom launch` still targets the *local* Herdr — launch remotely with the one-liner below, or ask the remote
+  controller to run `controlroom launch` itself.
+- Controllers are recognised by a `controller: <name>` / `controller (<label>): <name>` line in `STATUS.md`, or by
+  name (`controller`, `controller-*`, `*-controller`, `*-remote`).
+
+Launch a remote worker from the laptop:
+```bash
+M="herdr --machine <label>"; REPO=<repo path on the remote>
+P=$($M tab create --workspace <ws> --cwd "$REPO" --label <name> --no-focus | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])')
+$M agent start <name> --kind pi --pane "$P" --timeout 60000 && $M agent prompt <name> "Read docs/briefs/NNN-slug.md and execute it end to end …" --wait --timeout 120000
+```
+
+**What to keep local**: anything that needs the human's identity or browser (SSO'd chat/gateway tools, publishing to
+internal doc sites, Drive mirrors, OAuth popups). Tag those briefs `host: local`.
+**Linux hosts**: `tick-install` is launchd-only — run `controlroom tick --loop` in a pane beside the strip (the strip
+starts one itself when no heartbeat is seen). **Worker-host checklist**: [docs/remote-host.md](docs/remote-host.md)
+(Node, pi — incl. the "pi may be a private build — mirror the package root" case —, config sync without secrets, the
+`~/.bashrc` PATH gotcha for Herdr's non-login panes, `herdr integration install pi`, both `controlroom` symlinks).
+`controlroom host-setup <ssh-target>` is still **TODO** — the checklist is the recipe for now.
+
+## Two controllers
+
+One room on the laptop, one on the remote, **one repo**. Git is the hand-off, `STATUS.md` is the shared board, and
+**one controller is primary at a time** — full protocol in [docs/two-controller-protocol.md](docs/two-controller-protocol.md):
+
+1. **Host tag** — every brief header carries `host: local | <label>`; the controller on that host launches, watches
+   and integrates it (long jobs, pipelines, files-only research → remote; anything needing you → local).
+2. **Modes** — you say *"controller mode: remote"* / *"controller mode: local"*; the outgoing primary commits + pushes,
+   writes `MODE: <mode> since <time>` (and, when handing back, a `## HANDOFF <time>` block), and stops launching.
+3. **Board** — only the primary edits `STATUS.md`; a `host` column in the workers table; remote results that need a
+   local-only step go under `## Pending publish (local)`; `logs/` and `AUTOMATIONS.md` are per host, never merged.
+4. **Conflict rule** — never edit `STATUS.md` on both hosts between a push and a pull; if it happens, local wins.
+5. **Sync** — a remote with no stored git credential pulls/pushes with a short-lived token over stdin
+   (`gh auth token | ssh <target> 'read -r T; git -c http.….extraheader=… pull --ff-only'`) — nothing persisted.
+
+In one project the full loop — brief pushed → remote controller launches → worker DONE → result committed and pushed
+back → verified on the laptop — took about **65 s**.
+
+---
+
 ## The `controlroom` CLI
 
 | command | does |
@@ -186,8 +271,10 @@ Keys inside the strip: wheel / arrows / `j` `k` / PgUp PgDn / space · `g` top �
 | `controlroom watch-path "<glob>" "<instruction>" [--prompt]` | arm a `watch-path` row: toast (or prompt) when a file under the glob is newer than last seen and ≥ 120 s old; baseline is the current newest file |
 | `controlroom cancel A###` | cancel an armed/held row (never fires again); `cancel <agent>` cancels its watch row; `cancel --prune-fired` drops fired/cancelled one-shot rows from the table (ids are never reused — `next_id` lives in `.tick-state.json`). **Never delete rows by hand**: cancel them. |
 | `controlroom resume <agent> [note]` / `resume-stalled [note]` | re-prompt a stopped worker and re-arm its watch row / do that for every crashed or stalled worker |
-| `controlroom verify <agent>` / `lastline <agent>` | `working \| blocked \| done \| crashed \| stalled` from the pane / its last meaningful line |
-| `controlroom strip-restart` | restart the pager in the pane labelled `status` |
+| `controlroom verify <agent>` / `lastline <agent>` | `working \| blocked \| done \| crashed \| stalled` from the pane / its last meaningful line. `<agent>` may be `<machine>/<agent>` (also for `resume`, `watch`) → `herdr --machine <machine>` |
+| `controlroom strip-restart [--pane P]` | restart the pager in **this workspace's** `status` pane (two rooms on one server both label their strip `status`), or an explicit pane |
+| `controlroom strip-check [--force]` | relaunch the pager when the `status` pane shows a bare shell (after a Herdr server restart); the tick and `init` call it; `--force` also replaces whatever else is running there |
+| `controlroom machines [--refresh]` | the remote-machine cache (`logs/.machines-cache.json`) behind ROOMS, the per-machine AGENTS groups and `[label]` events; `--refresh` queries now (≤ 3 s) |
 | `touch logs/AUTOPROMPT-OFF` | per-room kill switch: wake rows toast instead of prompting the controller (tick **and** strip read it; `CONTROLROOM_AUTOPROMPT=0` still works but is user-global) |
 | `controlroom pause [--resume-after Nm\|Nh] [reason]` / `play` | write / remove `logs/PAUSED`; `--resume-after` arms a `play` row the tick fires; `launch` refuses while paused; workers drain |
 | `controlroom tick-install` / `tick-uninstall` | write + bootstrap (or boot out + remove) `~/.config/controlroom/launchd/io.controlroom.tick.<hash8>.plist`; `init` calls `tick-install` (idempotent) |
@@ -242,6 +329,10 @@ Useful Herdr commands from any pane: `herdr agent list` · `herdr agent read <na
 - Healthy work on this machine never went more than **6.3 min** between write-type tool calls; the one longer honest gap (15 min) was a bash poll loop that wrote to its own `logs/<worker>.log` — which `last write` attributes to the worker anyway. Hence 20 min.
 - `herdr agent rename` can be lost across a Herdr restart (the controller pane here showed up unnamed); `controlroom health controller` then says `missing` — re-run `controlroom init` from the controller pane or point `health --jsonl` at the session file.
 - `health`'s `ctx %` once said **89 %** for a controller at 18 %: the model (`claude-fable-5-1`, 1 M window) was not in the hard-coded window table (200 k default). `window()` now reads `~/.pi/agent/models-store.json`; the flush fallback would otherwise have fired on a phantom crossing. Always `tick --dry-run` after touching a trigger.
+- Two control rooms on one Herdr server both label their strip pane `status`; the old `strip-restart` picked the first one and restarted the *other* room's pager. Pane lookups are scoped to `$HERDR_WORKSPACE_ID` now.
+- A Herdr server restart keeps tab/pane ids but kills the processes in them: the strip comes back as a bare shell. `controlroom strip-check` (run by the tick) relaunches it; the controller pi you restart yourself (`herdr agent start …`, then `pi --resume`).
+- Herdr panes on a remote host are **non-login** shells: `~/.profile` isn't read, `~/.local/bin` is missing, and `herdr agent start … --kind pi` times out with no visible error. Put the PATH line in `~/.bashrc`.
+- Both `controlroom` **and** `controlroom-pager` must be on the remote's PATH, or the strip dies with `exec: controlroom-pager: not found`.
 - An LLM cannot run slash commands: a wake saying “run /flush” does nothing; `/reload` and `/flush` are for the human (or keystrokes via `herdr agent prompt <pane> "/flush"`). The extension therefore acts on the controller's *reply* (`/compact` on a line of its own) instead.
 
 ## Layout
@@ -254,6 +345,8 @@ bin/controlroom              the CLI (bash)
 bin/controlroom-pager        the status strip (python3, curses)
 extensions/controlroom.ts    the compaction-flush extension (pi 1.4.0 API; loaded via package.json `pi.extensions`)
 docs/design/durable-controlroom.md   the durability design (memory · tick · automations · dream · compaction)
+docs/remote-host.md                  worker-host setup checklist (second machine)
+docs/two-controller-protocol.md      two rooms, one repo: host tags · modes · HANDOFF · conflict rule · sync
 ```
 
 MIT © Lance Riedel
