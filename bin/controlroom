@@ -104,7 +104,8 @@ PY
   if [ -f "$ROOT/docs/briefs/STATUS.md" ]; then
     printf ' WAITING ON %s\n' "$(echo "$HUMAN" | tr a-z A-Z)"
     awk '/^## Decisions waiting/{f=1;next} /^## /{f=0} f && /^[0-9]+\./ && !/~~/' "$ROOT/docs/briefs/STATUS.md" | cut -c1-140 | sed 's/^/   /'
-    printf ' BRIEFS   %s\n' "$(ls "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -v -E 'README|STATUS|AUTOMATIONS' | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' | tr '\n' ' ')"
+    local nb; nb=$(ls "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -c -v -E 'README|STATUS|AUTOMATIONS')   # (014.1) newest first, last 6, "+N older"
+    printf ' BRIEFS   %s%s\n' "$(ls -t "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -v -E 'README|STATUS|AUTOMATIONS' | head -6 | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' | tr '\n' ' ')" "$([ "$nb" -gt 6 ] && echo "· +$((nb-6)) older")"
   fi
 }
 

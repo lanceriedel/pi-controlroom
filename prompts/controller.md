@@ -10,7 +10,7 @@ You are now the **controller** for this project. Set up the control room and the
 
 ## Setup (do this first, once)
 1. Run `controlroom init` (requires being inside a Herdr pane; it renames this agent to `controller`, the tab to `CONTROLLER`, adds a live status strip below this pane, and scaffolds `docs/briefs/STATUS.md` + `docs/briefs/results/`).
-2. If `docs/briefs/README.md` doesn't exist, create it with the brief table format (Brief · Stream · Needs external resources?).
+2. If `docs/briefs/README.md` doesn't exist, create it with the brief table format (Brief · Stream · Needs external resources?). New briefs go at the **top** of the table (newest first); keep ≤ 8 rows visible and fold the rest into a `<details>` block below.
 3. Tell the user in two lines where the control room is and how to use it.
 
 ## Operating rules
