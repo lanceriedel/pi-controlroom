@@ -1259,7 +1259,10 @@ PY
     [ -d "$ROOT/docs/briefs" ] || exit 0   # silent no-op outside a control room
     if [ "$LOOP" = 1 ]; then
       if command -v caffeinate >/dev/null 2>&1 && [ -z "${CR_CAFF:-}" ]; then CR_CAFF=1 exec caffeinate -i "$0" tick --root "$ROOT" --loop $PASS; fi
-      while true; do "$0" tick --root "$ROOT" $PASS; sleep 60; done
+      hb=$(cat "$ROOT/logs/.tick.last" 2>/dev/null | cut -d' ' -f1)   # (014.4) refuse to be a second loop for this room — the lock keeps it safe, but one is enough
+      if [ -n "$hb" ] && [ $(( $(date +%s) - hb )) -lt 120 ] && [ -z "${CR_LOOP_FORCE:-}" ]; then echo "tick: a loop is already beating for $ROOT (logs/.tick.last $(( $(date +%s) - hb ))s ago) — not starting another (CR_LOOP_FORCE=1 to override)"; exit 0; fi
+      echo "tick --loop: every 60 s — reconciles AUTOMATIONS.md (watch/wake/flush rows), health (stuck?/spinning?), strip; prints only actions; idle passes write logs/.tick.last silently"
+      n=0; while true; do out=$("$0" tick --root "$ROOT" $PASS 2>&1); case "$out" in "tick: nothing to do") n=$((n+1)); [ $((n % 60)) -eq 0 ] && echo "[$(date '+%H:%M')] tick: quiet for $n passes";; *) printf '%s\n' "$out";; esac; sleep 60; done
     fi
     cr5 tick $PASS
     case " $PASS " in *" --dry-run "*) ;; *) rooms_py refresh --quiet; "$0" strip-check --quiet >/dev/null 2>&1;; esac ;;   # (015) remote machines → logs/.machines-cache.json (+ [label] events) · relaunch a dead strip pager
