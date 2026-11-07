@@ -23,18 +23,20 @@ def generate():
 
 def parse(line):
     """ANSI line -> [(text, style)] with style = (fg, bg, bold, reverse); fg/bg are curses color numbers or -1.
-    Handles 0/1/7, 30-37/90-97, 40-47/100-107, 38;5;N / 48;5;N (015: group bars use 48;5;N backgrounds)."""
+    Handles 0/1/2/7, 30-37/90-97, 40-47/100-107, 38;5;N / 48;5;N. (015) The strip itself uses only foreground accents + dim, never fills."""
     segs, pos = [], 0
-    st = {"fg": -1, "bg": -1, "bold": False, "rev": False}
-    def style(): return (st["fg"], st["bg"], st["bold"], st["rev"])
+    st = {"fg": -1, "bg": -1, "bold": False, "rev": False, "dim": False}
+    def style(): return (st["fg"], st["bg"], st["bold"], st["rev"], st["dim"])
     for m in ANSI.finditer(line):
         if m.start() > pos: segs.append((line[pos:m.start()], style()))
         codes = [int(c) for c in m.group(1).split(";") if c] or [0]
         i = 0
         while i < len(codes):
             c = codes[i]
-            if c == 0: st.update(fg=-1, bg=-1, bold=False, rev=False)
+            if c == 0: st.update(fg=-1, bg=-1, bold=False, rev=False, dim=False)
             elif c == 1: st["bold"] = True
+            elif c == 2: st["dim"] = True
+            elif c == 22: st["bold"] = st["dim"] = False
             elif c == 7: st["rev"] = True
             elif c == 27: st["rev"] = False
             elif c == 39: st["fg"] = -1
@@ -54,14 +56,14 @@ def main(stdscr):
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION); print("\033[?1003h", end="", flush=True)
     pairs = {}
     def attr(style):   # (fg,bg,bold,rev) -> curses attr; color pairs allocated on demand (falls back to plain when the terminal lacks colors)
-        fg, bg, bold, rev = style
+        fg, bg, bold, rev, dim = style
         if curses.COLORS < 256: fg = fg if fg < 16 else -1; bg = bg if bg < 16 else -1
         if curses.COLORS < 16: fg = fg if fg < 8 else -1; bg = bg if bg < 8 else -1
         key = (fg, bg)
         if key not in pairs:
             try: n = len(pairs) + 1; curses.init_pair(n, fg, bg); pairs[key] = curses.color_pair(n)
             except Exception: pairs[key] = 0
-        return pairs[key] | (curses.A_BOLD if bold else 0) | (curses.A_REVERSE if rev else 0)
+        return pairs[key] | (curses.A_BOLD if bold else 0) | (curses.A_REVERSE if rev else 0) | (curses.A_DIM if dim else 0)
     WIDTH["w"] = stdscr.getmaxyx()[1]
     state = {"lines": generate(), "offset": 0, "last_input": 0.0, "last_gen": time.time(), "stamp": time.strftime("%H:%M:%S"), "quit": False, "force": False}
     lock = threading.Lock()
