@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-07 — Lance asked for the lancedocs lookbook dataset-map to be exploded into a full dataset catalog → wrote `lookbook-research/docs/briefs/055-dataset-map-v2.md` and handed it to controller-w9 to launch (its room, host: local).
 - 11-07 08:59 — Round A034 #1 (Sat; fired after 3 just-woke deferrals → cap worked). Lance pushed 0.2.0 + fixes himself (origin at b8c73fb) and added remote-host + two-controller protocol (`docs/remote-host.md`, `docs/two-controller-protocol.md`, +215 lines bin: ROOMS header, hosts). Machine `dev002` registered but unreachable since 18:21. Controller pane had lost its Herdr name (L041) → renamed back to `controller`. Push question is closed; 2 commits ahead.
 - 11-06 08:13 — Round A032 #2: 014 landed (TAKEN-OK proof: `tick.log 04:58 A033 prompt taken`). Rounds back to daily (A034; note: `wake 08:00 --repeat "weekdays 08:00"` armed its first fire on Sat 11-07 — first-fire ignores the weekdays filter; 0.2.1 nit). Push a/b still open (now 0.2.1 material too).
 - 11-06 04:55 — Round A032 #1 (fired 19 h late: Mac asleep; the new just-woke defer re-deferred at every dark wake → cap needed). Worker prompt-uptake died 08:33 to Connection error mid-result; code already live (`DRY A032 prompt taken`). Resumed with: cap deferrals at 3, write result file, TAKEN-OK proof.
