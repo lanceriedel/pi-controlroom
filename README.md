@@ -30,10 +30,15 @@ It was built while running ~15 agents over a week on a data project. Everything 
 
 ```bash
 pi install git:github.com/lanceriedel/pi-controlroom
-mkdir -p ~/.local/bin && cp ~/.pi/agent/git/github.com/lanceriedel/pi-controlroom/bin/* ~/.local/bin/
+P=~/.pi/agent/git/github.com/lanceriedel/pi-controlroom
+mkdir -p ~/.local/bin && ln -sf "$P/bin/controlroom" "$P/bin/controlroom-pager" ~/.local/bin/
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc; echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc;; esac
+controlroom 2>&1 | head -3     # prints usage → installed
 ```
 
-Then, in **any pi running inside a Herdr pane**:
+Symlinks (not copies) so `pi update` updates the CLI too. Herdr panes are non-login shells, hence the `~/.bashrc`/`~/.zshrc` PATH line.
+
+Then, in **any pi running inside a Herdr pane** (open Herdr → a tab in your project → `pi`):
 
 ```
 /reload
