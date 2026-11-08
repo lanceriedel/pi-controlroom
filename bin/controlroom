@@ -1203,7 +1203,22 @@ def render():
         else: say(f"md2html failed: {e[-200:]}")
     else: say("controlroom-md2html not found (next to controlroom or on PATH) — wrote .md only")
     say("status-page → "+" ".join(os.path.relpath(w,root) for w in wrote)+(f"  (links → {URL}/blob/{BRANCH})" if URL else "  (no GitHub remote — relative links; set CONTROLROOM_REPO_URL)"))
+def publish_pages():   # (016) preferred path: controlroom-pages pushes latest.{html,md} to the orphan gh-pages branch — no commit in the source branch, no docs/.nojekyll, no master:/docs Pages source
+    CP=shutil.which("controlroom-pages") or os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])) if sys.argv[0].endswith("controlroom") else "", "controlroom-pages")
+    if not os.access(CP,os.X_OK): return None
+    rc,o,e=sh([CP,"push","--repo",root,"--index","latest.html",HT,MD],120); url=""
+    for l in (o+"\n"+e).splitlines():
+        if l.startswith("http") or "url=http" in l: url=l.split("url=")[-1].strip().replace("//status","/status")
+    gh="pushed" if rc==0 else ("pushed(url?)" if rc==4 else f"failed:pages(rc={rc} {(e.splitlines() or ['?'])[-1][:80]})")
+    n_pub=0
+    if os.path.exists(PUB) and os.access(PUB,os.X_OK):
+        rc2,o2,e2=sh(["bash",PUB],900,env=dict(os.environ,STATUS_MD=MD,STATUS_HTML=HT,ROOT=root,STATUS_URL=url)); n_pub=sum(1 for l in o2.splitlines() if l.startswith("published ")); rc2==0 or say(f"publishers.sh rc={rc2}: {(e2 or o2)[-200:]}")
+    line=f"[{now:%Y-%m-%d %H:%M}] status-page ghpages={gh} publishers={n_pub} url={url or '-'} (via controlroom-pages, gh-pages branch)"
+    os.makedirs(os.path.dirname(LOG),exist_ok=True); open(os.path.join(os.path.dirname(LOG),"publish.log"),"a").write(line+"\n"); say(line)
+    if gh.startswith("pushed"): open(LOG,"a").write(f"[{now:%m-%d %H:%M}] status page — pushed {url or 'gh-pages'}\n")
+    sys.exit(0 if gh.startswith("pushed") else 1)
 def publish():
+    if os.environ.get("CONTROLROOM_PAGES_MODE","orphan")!="docs": publish_pages()   # (016) default; CONTROLROOM_PAGES_MODE=docs = legacy commit-to-master:/docs path below
     gh="pushed"; pages=""; url=""; n_pub=0
     docs=os.path.join(root,"docs"); nj=os.path.join(docs,".nojekyll"); ix=os.path.join(docs,"index.html")
     os.path.exists(nj) or open(nj,"w").write("")
