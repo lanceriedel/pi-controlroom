@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# controlroom-pages — publish rendered status files to GitHub Pages WITHOUT committing them to the source branch. (016)
+#
+# The page lives on an orphan branch (default `gh-pages`) that is force-pushed as ONE commit every time, so it behaves
+# like a blob store with a stable URL: `master` stays source-only, history never grows, both controllers (laptop and
+# dev002) can publish with the `gh` token they already have. GitHub Pages' source is switched to that branch on first use.
+#
+# Usage:
+#   controlroom-pages push [--branch gh-pages] [--prefix status] [--index <name>] [--repo <dir>] <file>...
+#       copy <file>s to <prefix>/ on the orphan branch (+ .nojekyll + index.html → <prefix>/<index>), commit, push -f,
+#       ensure Pages serves that branch, print the URL. <index> defaults to the first *.html given.
+#   controlroom-pages url [--repo <dir>]          print the Pages html_url (or "pages: off")
+#   controlroom-pages status [--repo <dir>]       source branch/path + status + last publish.log line
+# Env: CONTROLROOM_PAGES_BRANCH (default gh-pages) · CONTROLROOM_PAGES_REMOTE (default origin)
+# Exit: 0 ok · 2 usage · 3 git push failed · 4 Pages API failed (files are pushed; URL unknown)
+# Logs one line to <repo>/logs/publish.log:  [stamp] pages branch=gh-pages files=N pushed=yes|no url=<url>
+# Intended callers: `controlroom status-page --publish` (015) instead of committing docs/status/** to the source branch,
+# a room's bin/publish-latest.sh, or docs/status/publishers.sh.
+set -uo pipefail
+
+BRANCH="${CONTROLROOM_PAGES_BRANCH:-gh-pages}"; REMOTE="${CONTROLROOM_PAGES_REMOTE:-origin}"; PREFIX="status"; INDEX=""; REPO=""
+cmd="${1:-}"; shift || true
+case "$cmd" in push|url|status) ;; *) sed -n 2,16p "$0" | sed 's/^# \{0,1\}//'; exit 2 ;; esac
+FILES=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --branch) BRANCH="$2"; shift 2 ;; --prefix) PREFIX="$2"; shift 2 ;; --index) INDEX="$2"; shift 2 ;; --repo) REPO="$2"; shift 2 ;;
+    -*) echo "unknown flag $1" >&2; exit 2 ;; *) FILES+=("$1"); shift ;;
+  esac
+done
+REPO="${REPO:-$(git rev-parse --show-toplevel 2>/dev/null)}"; [ -n "$REPO" ] || { echo "not in a git repo" >&2; exit 2; }
+cd "$REPO" || exit 2
+URL_RAW=$(git remote get-url "$REMOTE" 2>/dev/null) || { echo "no remote $REMOTE" >&2; exit 2; }
+SLUG=$(printf '%s' "$URL_RAW" | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##; s#/$##')   # org/repo
+tb() { perl -e 'alarm shift; exec @ARGV' -- "$@"; }   # time-box (no `timeout` on macOS)
+stamp() { date '+%Y-%m-%d %H:%M:%S %Z'; }
+log() { mkdir -p logs; printf '[%s] %s\n' "$(stamp)" "$*" >> logs/publish.log; }
+
+pages_json() { tb 20 gh api "repos/$SLUG/pages" 2>/dev/null; }
+pages_url()  { pages_json | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("html_url") or "")
+except Exception: print("")' 2>/dev/null; }
+pages_source() { pages_json | python3 -c 'import json,sys
+try: d=json.load(sys.stdin); s=d.get("source") or {}; print(s.get("branch",""), s.get("path",""), d.get("status",""))
+except Exception: print("")' 2>/dev/null; }
+
+ensure_pages() {   # make Pages serve $BRANCH:/ ; prints html_url or empty
+  command -v gh >/dev/null 2>&1 || { echo ""; return 0; }
+  read -r sb sp _ <<<"$(pages_source)"
+  if [ -z "$sb" ]; then
+    tb 30 gh api -X POST "repos/$SLUG/pages" -f "source[branch]=$BRANCH" -f "source[path]=/" >/dev/null 2>&1 || true
+  elif [ "$sb" != "$BRANCH" ] || [ "$sp" != "/" ]; then
+    tb 30 gh api -X PUT "repos/$SLUG/pages" -f "source[branch]=$BRANCH" -f "source[path]=/" >/dev/null 2>&1 || true
+  fi
+  pages_url
+}
+
+case "$cmd" in
+  url) u=$(pages_url); [ -n "$u" ] && echo "$u" || echo "pages: off"; exit 0 ;;
+  status) read -r sb sp st <<<"$(pages_source)"; echo "repo $SLUG · pages source ${sb:-off}:${sp:-} · status ${st:-}"
+          [ -f logs/publish.log ] && grep ' pages ' logs/publish.log | tail -1; exit 0 ;;
+esac
+
+[ ${#FILES[@]} -gt 0 ] || { echo "push: give at least one file" >&2; exit 2; }
+for f in "${FILES[@]}"; do [ -f "$f" ] || { echo "no such file: $f" >&2; exit 2; }; done
+[ -n "$INDEX" ] || for f in "${FILES[@]}"; do case "$f" in *.html) INDEX=$(basename "$f"); break ;; esac; done
+[ -n "$INDEX" ] || INDEX=$(basename "${FILES[0]}")
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/controlroom-pages.XXXXXX"); trap 'rm -rf "$WORK"' EXIT
+mkdir -p "$WORK/$PREFIX"
+for f in "${FILES[@]}"; do cp "$f" "$WORK/$PREFIX/"; done
+: > "$WORK/.nojekyll"
+printf '<!doctype html><meta charset="utf-8"><title>%s</title>\n<meta http-equiv="refresh" content="0; url=%s/%s">\n<p><a href="%s/%s">%s — latest status</a></p>\n' \
+  "$SLUG" "$PREFIX" "$INDEX" "$PREFIX" "$INDEX" "$SLUG" > "$WORK/index.html"
+printf 'Published by controlroom-pages at %s from %s@%s. This branch is force-pushed as one commit; nothing here is source.\n' \
+  "$(stamp)" "$SLUG" "$(git rev-parse --short HEAD 2>/dev/null)" > "$WORK/README.md"
+
+(
+  cd "$WORK" && git init -q && git checkout -q -b "$BRANCH" \
+  && git -c user.name="controlroom-pages" -c user.email="controlroom-pages@localhost" add -A \
+  && git -c user.name="controlroom-pages" -c user.email="controlroom-pages@localhost" commit -q -m "status page $(stamp) (${#FILES[@]} files, source $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null))" \
+  && tb 60 git push -q -f "$URL_RAW" "HEAD:refs/heads/$BRANCH"
+) >"$WORK.out" 2>&1
+rc=$?
+if [ $rc -ne 0 ]; then
+  log "pages branch=$BRANCH files=${#FILES[@]} pushed=no err=$(tail -1 "$WORK.out" | tr -d '\n' | cut -c1-120)"
+  echo "push failed (rc=$rc): $(tail -3 "$WORK.out")" >&2; rm -f "$WORK.out"; exit 3
+fi
+rm -f "$WORK.out"
+u=$(ensure_pages)
+log "pages branch=$BRANCH files=${#FILES[@]} pushed=yes url=${u:-unknown}/$PREFIX/$INDEX"
+if [ -n "$u" ]; then echo "published → ${u%/}/$PREFIX/$INDEX  (branch $BRANCH, one commit)"; exit 0
+else echo "pushed to $BRANCH; Pages URL unknown (gh missing or API failed) — check: gh api repos/$SLUG/pages" >&2; exit 4; fi

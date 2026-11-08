@@ -41,7 +41,7 @@ herdr integration install pi && herdr integration status      # pi must show as 
 ```bash
 pi install git:github.com/lanceriedel/pi-controlroom
 P=~/.pi/agent/git/github.com/lanceriedel/pi-controlroom
-mkdir -p ~/.local/bin && ln -sf "$P/bin/controlroom" "$P/bin/controlroom-pager" ~/.local/bin/
+mkdir -p ~/.local/bin && ln -sf "$P/bin/controlroom" "$P/bin/controlroom-pager" "$P/bin/controlroom-pages" ~/.local/bin/
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc; echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc;; esac
 controlroom 2>&1 | head -3     # prints usage → installed
 ```
@@ -187,6 +187,25 @@ With **detail on** (`d` in the strip, or `Ctrl+B D`), each agent also shows its 
 Keys inside the strip: wheel / arrows / `j` `k` / PgUp PgDn / space · `g` top · `G` bottom · `r` refresh now · `d` toggle detail · `q` quit (`controlroom statusbar` brings it back).
 
 ---
+
+## Status page (where it is published)
+
+`controlroom status-page` (015) renders `docs/status/latest.md` + `.html` from the room's files. **Where the HTML goes is a
+separate concern**, and the default is a blob-like store, not the source branch:
+
+- **`controlroom-pages push <files>`** (016) copies the files to an **orphan `gh-pages` branch** that is force-pushed as **one
+  commit** every time (`status/<file>` + `.nojekyll` + `index.html` redirect), then points GitHub Pages at that branch
+  (`gh api … /pages`, POST if off, PUT if it serves another source) and prints the URL. `master` never carries rendered
+  HTML; history never grows; the laptop and a remote host can both publish with the `gh` token they already have.
+  `controlroom-pages url` / `status` show where it is. One line per publish in `logs/publish.log`.
+- Extra publishers (lancedocs, GDocs mirror) stay in `docs/status/publishers.sh` and run after the push.
+- Private repos get an Enterprise Pages URL (`https://<random>.pages.github.io/`), public ones `https://<org>.github.io/<repo>/`; the
+  path is the same: `/status/<index>.html`.
+
+```bash
+controlroom-pages push docs/status/latest.html docs/status/latest.md        # from any room; prints the URL
+controlroom-pages push --prefix status --index where-we-stand-latest.html docs/status/where-we-stand-latest.{html,md}
+```
 
 ## Multiple machines
 
@@ -360,6 +379,7 @@ skills/controlroom/SKILL.md  the protocol as a skill, so a fresh agent operates 
 skills/controlroom/bin -> ../../bin
 bin/controlroom              the CLI (bash)
 bin/controlroom-pager        the status strip (python3, curses)
+bin/controlroom-pages        publish rendered status files to GitHub Pages via an orphan `gh-pages` branch (one force-pushed commit; nothing lands in the source branch) — see "Status page"
 extensions/controlroom.ts    the compaction-flush extension (pi 1.4.0 API; loaded via package.json `pi.extensions`)
 docs/design/durable-controlroom.md   the durability design (memory · tick · automations · dream · compaction)
 docs/remote-host.md                  worker-host setup checklist (second machine)
