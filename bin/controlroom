@@ -994,7 +994,7 @@ def refresh(force=False,quiet=False):
             if is_ctl(n,lab) or prev is None or prev==st: continue
             if st=="blocked": events.append((f"[{lab}] worker {n} NEEDS YOU",f"herdr --machine {lab} agent focus {n}","request"))
             elif prev=="working" and st in ("done","idle"): events.append((f"[{lab}] worker {n}: finished ({st})",f"controlroom verify {lab}/{n} · results are in the remote clone","done"))
-        if old and old.get("reachable") is False: events.append((f"[{lab}] reachable again",f"down {max(1,int((now-(old.get('since') or now))//60))}m","done"))
+        if old and old.get("reachable") is False and now-(old.get("since") or now)>=300: events.append((f"[{lab}] reachable again",f"down {max(1,int((now-(old.get('since') or now))//60))}m","done"))   # (015.1) one-tick blips (ssh timeouts) are not events — graph-search logged 25 "down 1m" in a day
         c["machines"][lab]={"target":m.get("target",""),"reachable":True,"since":old.get("since") if old.get("reachable") else now,"last_ok":now,"agents":new,"err":None}
     c["updated"]=now; save(c)
     for t,b,s in events: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",t,b,s],env=dict(os.environ,ROOT=ROOT),timeout=10)
