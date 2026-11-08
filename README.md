@@ -28,6 +28,16 @@ It was built while running ~15 agents over a week on a data project. Everything 
 
 ## Install
 
+**0. Herdr** (the terminal agent multiplexer the control room lives in) — skip if `herdr --version` ≥ 0.9:
+
+```bash
+brew install herdr                       # macOS / Linux with Homebrew
+# or: curl -fsSL https://releases.herdr.dev/app/install.sh | sh
+herdr integration install pi && herdr integration status      # pi must show as integrated, or agents read as `unknown`
+```
+
+**1. The package + CLI** (pi ≥ 1.4):
+
 ```bash
 pi install git:github.com/lanceriedel/pi-controlroom
 P=~/.pi/agent/git/github.com/lanceriedel/pi-controlroom
@@ -38,7 +48,7 @@ controlroom 2>&1 | head -3     # prints usage → installed
 
 Symlinks (not copies) so `pi update` updates the CLI too. Herdr panes are non-login shells, hence the `~/.bashrc`/`~/.zshrc` PATH line.
 
-Then, in **any pi running inside a Herdr pane** (open Herdr → a tab in your project → `pi`):
+**2. First use** — in **any pi running inside a Herdr pane** (`herdr` → create a workspace with your project as cwd → `pi` in that pane):
 
 ```
 /reload
