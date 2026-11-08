@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""controlroom-md2html — minimal Markdown → HTML (dark theme, tables, callouts, pills). python3 stdlib only. (015)
+Vendored from shopify-playground/lookbook-research/scripts/docs/md2html.py (2026-10-28) and generalised: the label pills
+are generic ([Verified] [Unverified] [Inference] [Position] [NNN]…), bare https URLs autolink, a missing # h1 falls back to the file name.
+Usage: controlroom-md2html IN.md OUT.html
+Supports: #..#### headings with optional {#anchor}, paragraphs, - lists, 1. lists (start preserved), | tables |, > callouts, ---,
+**bold**, *italic*, `code`, [text](url|#anchor|*.html|*.md), ~~strike~~. TOC of h2s inserted before the first <hr>.
+<meta name="published"> = first time OUT was created (preserved from the existing OUT), <meta name="updated"> = today."""
+import html, re, sys, os, datetime
+
+if len(sys.argv) < 3: sys.exit("usage: controlroom-md2html IN.md OUT.html")
+src = open(sys.argv[1]).read()
+out = sys.argv[2]
+
+CODE = []
+def protect_code(s):
+    def rep(m):
+        CODE.append(html.escape(m.group(1)))
+        return f"\x00{len(CODE)-1}\x00"
+    return re.sub(r"`([^`]+)`", rep, s)
+
+LABEL_RE = re.compile(r"\[((Verified|Unverified|Inference|Inferred|Opinion|Position|Speculation|Suggestion|Superseded|Partly|Unknown|Estimate|Results|Repo|Slack|\d{3}(?=[\s:/;,)\]]))[^\]]*)\](?!\()")
+
+def label_class(first):
+    f = first.lower()
+    if f.startswith(("verified", "slack", "repo")): return "lbl-ver"
+    if f.startswith("results") or f[:1].isdigit(): return "lbl-res"
+    if f.startswith(("unverified", "unknown")): return "lbl-unv"
+    if f.startswith(("speculation", "inference", "inferred", "opinion", "estimate")): return "lbl-spec"
+    if f.startswith("position"): return "lbl-pos"
+    return "lbl-sug"
+
+def inline(s):
+    s = protect_code(s)
+    s = html.escape(s, quote=False)
+    s = re.sub(r"\[([^\]]+)\]\((https?://[^)]+|#[^)]+|[^)]+\.html[^)]*|[^)]+\.md[^)]*|[^)\s]+)\)", r'<a href="\2">\1</a>', s)
+    s = LABEL_RE.sub(lambda m: f'<span class="lbl {label_class(m.group(2))}">[{m.group(1)}]</span>', s)
+    s = re.sub(r"~~(.+?)~~", r"<s>\1</s>", s)
+    s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+    s = re.sub(r"(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])", r"<i>\1</i>", s)
+    s = re.sub(r"(?<![\w*])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w*])", r"<i>\1</i>", s)
+    def restore(m):
+        c = CODE[int(m.group(1))]
+        lm = LABEL_RE.fullmatch(c)
+        if lm:
+            return f'<span class="lbl {label_class(lm.group(2))}">[{lm.group(1)}]</span>'
+        return f"<code>{c}</code>"
+    s = re.sub(r"\x00(\d+)\x00", restore, s)
+    s = re.sub(r"(?<![\"'>=/\w])(https?://[^\s<>()]+?)(?=[\s<)]|$)", r'<a href="\1">\1</a>', s)
+    return s
+
+def split_row(line):
+    line = line.strip()
+    if line.startswith("|"): line = line[1:]
+    if line.endswith("|"): line = line[:-1]
+    cells, cur, i = [], "", 0
+    while i < len(line):
+        ch = line[i]
+        if ch == "\\" and i + 1 < len(line) and line[i + 1] == "|":
+            cur += "|"; i += 2; continue
+        if ch == "|":
+            cells.append(cur); cur = ""
+        else:
+            cur += ch
+        i += 1
+    cells.append(cur)
+    return [c.strip() for c in cells]
+
+def slug(t):
+    t = re.sub(r"[^\w\s-]", "", t.lower()); return re.sub(r"\s+", "-", t).strip("-")
+
+lines = src.split("\n")
+body = []
+toc = []
+i = 0
+while i < len(lines):
+    ln = lines[i]
+    if not ln.strip():
+        i += 1; continue
+    if ln.startswith("<!--"):   # html comments pass through (the preamble template marker lives in one)
+        while i < len(lines) and "-->" not in lines[i]: i += 1
+        i += 1; continue
+    m = re.match(r"^(#{1,4})\s+(.*?)(?:\s*\{#([^}]+)\})?\s*$", ln)
+    if m:
+        lvl = len(m.group(1)); text = m.group(2); anchor = m.group(3) or slug(text)
+        if lvl == 2:
+            toc.append((anchor, re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", re.sub(r"\s*→.*$", "", re.sub(r"^\d+\.\s*", "", text)))))
+        body.append(f'<h{lvl} id="{html.escape(anchor)}">{inline(text)}</h{lvl}>')
+        i += 1; continue
+    if ln.strip() == "---":
+        body.append("<hr>"); i += 1; continue
+    if ln.startswith("```"):
+        q = []; i += 1
+        while i < len(lines) and not lines[i].startswith("```"):
+            q.append(html.escape(lines[i])); i += 1
+        i += 1; body.append("<pre><code>" + "\n".join(q) + "</code></pre>"); continue
+    if ln.startswith("> "):
+        q = []
+        while i < len(lines) and lines[i].startswith("> "):
+            q.append(lines[i][2:]); i += 1
+        body.append(f'<div class="callout">{inline(" ".join(q))}</div>'); continue
+    if ln.startswith("|"):
+        rows = []
+        while i < len(lines) and lines[i].startswith("|"):
+            rows.append(lines[i]); i += 1
+        hdr = split_row(rows[0])
+        data = rows[2:] if len(rows) > 1 and re.match(r"^\|[\s:|-]+\|?$", rows[1]) else rows[1:]
+        t = ['<div class="tw"><table><thead><tr>' + "".join(f"<th>{inline(c)}</th>" for c in hdr) + "</tr></thead><tbody>"]
+        for r in data:
+            t.append("<tr>" + "".join(f"<td>{inline(c)}</td>" for c in split_row(r)) + "</tr>")
+        t.append("</tbody></table></div>")
+        body.append("".join(t)); continue
+    if re.match(r"^\d+\.\s", ln):
+        items = []
+        start = re.match(r"^(\d+)\.\s", lines[i]).group(1)
+        while i < len(lines) and re.match(r"^\d+\.\s", lines[i]):
+            item = re.sub(r"^\d+\.\s", "", lines[i]); i += 1
+            while i < len(lines) and lines[i].startswith("   ") and lines[i].strip():
+                item += " " + lines[i].strip(); i += 1
+            items.append(item)
+        body.append((f'<ol start="{start}">' if start != "1" else "<ol>") + "".join(f"<li>{inline(x)}</li>" for x in items) + "</ol>"); continue
+    if ln.startswith("- "):
+        items = []
+        while i < len(lines) and lines[i].startswith("- "):
+            item = lines[i][2:]; i += 1
+            while i < len(lines) and lines[i].startswith("  ") and lines[i].strip() and not lines[i].startswith("- "):
+                item += " " + lines[i].strip(); i += 1
+            items.append(item)
+        body.append("<ul>" + "".join(f"<li>{inline(x)}</li>" for x in items) + "</ul>"); continue
+    p = []
+    while i < len(lines) and lines[i].strip() and not re.match(r"^(#|\||- |\d+\.\s|> |---|```|<!--)", lines[i]):
+        p.append(lines[i]); i += 1
+    body.append(f"<p>{inline(' '.join(p))}</p>")
+
+toc_html = '<div class="toc"><b>Sections</b> ' + " · ".join(f'<a href="#{html.escape(a)}">{html.escape(t)}</a>' for a, t in toc) + "</div>"
+first_hr = next((k for k, b in enumerate(body) if b == "<hr>"), None)
+if first_hr is not None and toc:
+    body.insert(first_hr, toc_html)
+
+CSS = """
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 16.5px; line-height: 1.6; color: #e8e8e8; background: #0b0f14; }
+  .container { max-width: 1240px; margin: 36px auto; padding: 0 32px 120px; }
+  h1 { font-size: 34px; font-weight: 700; margin-bottom: 10px; color: #fff; }
+  h2 { font-size: 26px; font-weight: 700; margin: 72px 0 18px; color: #fff; border-bottom: 2px solid #1f2933; padding-bottom: 10px; scroll-margin-top: 24px; }
+  h3 { font-size: 19px; color: #fff; margin: 34px 0 12px; scroll-margin-top: 24px; }
+  h4 { font-size: 16.5px; color: #2dd4bf; margin: 26px 0 8px; scroll-margin-top: 24px; }
+  p { margin-bottom: 14px; color: #c9d1d9; }
+  .tw { overflow-x: auto; margin-bottom: 22px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: #10161d; border: 1px solid #1f2933; border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1a222c; vertical-align: top; }
+  th { font-weight: 600; background: #141c25; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #8b98a5; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; background: #161e28; color: #9be7d9; padding: 1px 5px; border-radius: 3px; }
+  pre { background: #10161d; border: 1px solid #1f2933; border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  ul { margin: 0 0 16px 22px; color: #c9d1d9; } li { margin-bottom: 8px; }
+  ol { margin: 0 0 16px 24px; color: #c9d1d9; }
+  .callout { background: #0f1f1c; border-left: 4px solid #2dd4bf; padding: 14px 18px; margin: 18px 0; border-radius: 0 6px 6px 0; color: #d7e3df; }
+  .toc { font-size: 14px; color: #8b98a5; background: #10161d; border: 1px solid #1f2933; border-radius: 8px; padding: 12px 16px; margin: 18px 0 8px; line-height: 1.9; }
+  .toc a { color: #2dd4bf; text-decoration: none; }
+  hr { border: 0; border-top: 1px solid #1f2933; margin: 40px 0; }
+  a { color: #2dd4bf; }
+  b { color: #fff; }
+  s { color: #6b7785; }
+  .lbl { display: inline-block; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; padding: 0 6px; border-radius: 3px; border: 1px solid; margin: 0 1px; vertical-align: 1px; white-space: nowrap; line-height: 1.7; }
+  .lbl-ver { color: #2dd4bf; border-color: #2dd4bf55; background: #2dd4bf14; }
+  .lbl-res { color: #a78bfa; border-color: #a78bfa55; background: #a78bfa14; }
+  .lbl-unv { color: #fbbf24; border-color: #fbbf2455; background: #fbbf2414; }
+  .lbl-spec { color: #f472b6; border-color: #f472b655; background: #f472b614; }
+  .lbl-pos { color: #fb923c; border-color: #fb923c55; background: #fb923c14; }
+  .lbl-sug { color: #94a3b8; border-color: #94a3b855; background: #94a3b814; }
+"""
+mt = re.search(r"<h1[^>]*>(.*?)</h1>", "\n".join(body))
+title = re.sub(r"<[^>]+>", "", html.unescape(mt.group(1))) if mt else os.path.splitext(os.path.basename(sys.argv[1]))[0]
+
+today = datetime.date.today().isoformat()
+published = today
+if os.path.exists(out):
+    try:
+        prev = open(out, errors="ignore").read(65536)
+        mp = re.search(r'<meta name="published" content="(\d{4}-\d{2}-\d{2})"', prev)
+        if mp: published = mp.group(1)
+    except Exception:
+        pass
+META = f'<meta name="published" content="{published}"><meta name="updated" content="{today}">'
+
+doc = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{html.escape(title)}</title>
+{META}
+<style>{CSS}</style>
+</head>
+<body><div class="container">
+{chr(10).join(body)}
+</div></body>
+</html>
+"""
+tmp = out + ".tmp"
+open(tmp, "w").write(doc); os.replace(tmp, out)
+print("wrote", out, len(doc.encode()), "bytes")

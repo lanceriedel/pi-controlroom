@@ -4,9 +4,9 @@
 ## Workers
 | pane | agent | brief | state | result |
 |---|---|---|---|---|
-| wC:pQ | status-page | 015-status-page | working | — |
 
 ## Notes
+- 11-08 16:40 — Round A036 #1: 015 landed. Live page https://lanceriedel.github.io/pi-controlroom/status/latest.html (Pages build was failing on a stray self-symlink `docs/briefs/briefs` → removed). dev002 unreachable since 14:56 (network).
 - 11-08 — Lance (via gs-controller) asked for `controlroom status-page [--publish]` (event-driven project page → GitHub Pages + publishers; auto after launch/land). Brief 015 launched; round back to 2h.
 - 11-07 — Lance asked for the lancedocs lookbook dataset-map to be exploded into a full dataset catalog → wrote `lookbook-research/docs/briefs/055-dataset-map-v2.md` and handed it to controller-w9 to launch (its room, host: local).
 - 11-07 08:59 — Round A034 #1 (Sat; fired after 3 just-woke deferrals → cap worked). Lance pushed 0.2.0 + fixes himself (origin at b8c73fb) and added remote-host + two-controller protocol (`docs/remote-host.md`, `docs/two-controller-protocol.md`, +215 lines bin: ROOMS header, hosts). Machine `dev002` registered but unreachable since 18:21. Controller pane had lost its Herdr name (L041) → renamed back to `controller`. Push question is closed; 2 commits ahead.
@@ -37,6 +37,7 @@ Results land in `docs/briefs/results/`; chat is ephemeral, files are the memory.
 ## Landed
 | when | brief | worker | result | one-liner |
 |---|---|---|---|---|
+| 11-08 | 015-status-page | status-page | [results/015-status-page.md](results/015-status-page.md) | status-page CLI + md2html + launch/land hooks; Pages enabled, page pushed but 404 until `git rm docs/briefs/briefs` (stray symlink) |
 | 11-06 | 014-prompt-uptake | prompt-uptake | [results/014-prompt-uptake.md](results/014-prompt-uptake.md) | uptake check + re-prompt · just-woke defer (capped 3) · strip ⚠ aborted turn · live TAKEN-OK · +40 lines |
 | 10-28 | 013-tobi-comparison | tobi-comparison | [results/013-tobi-comparison.md](results/013-tobi-comparison.md) | Lance-facing comparison, 110 lines; biggest weakness = no `core changed → restart` + untested auto-flush/S10 |
 | 10-27 | dream 2026-10-27-1740 | dreamer-1 | [dreams/2026-10-27-1740.md](memory/dreams/2026-10-27-1740.md) | 10 proposed → 6 promoted (D023–D026, L032–L033) · 4 rejected · 6 merges applied |
@@ -76,3 +77,4 @@ Results land in `docs/briefs/results/`; chat is ephemeral, files are the memory.
 | dreamer-1 | 10-27 19:40 | dream judged | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-10-27T23-40-13-691Z_01a17fbc-5dfb-75e7-ba7c-45519921ac00.jsonl` |
 | tobi-comparison | 10-28 15:09 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-10-28T19-09-49-570Z_01a183eb-2a82-7422-b053-0add08e0c174.jsonl` |
 | prompt-uptake | 11-06 08:12 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-11-05T15-03-24-502Z_01a1ac3c-7056-713c-a760-51793f2c1de2.jsonl` |
+| status-page | 11-08 16:35 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-11-08T19-30-07-698Z_01a1bca3-b4d2-71b5-80f7-3f68bd77add7.jsonl` |

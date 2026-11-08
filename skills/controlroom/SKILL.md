@@ -11,7 +11,7 @@ Requires: Herdr (`HERDR_ENV=1` inside a Herdr pane), pi, python3, bash. macOS or
 The scripts live in this skill's `bin/`. Put them on PATH (idempotent):
 
 ```bash
-mkdir -p ~/.local/bin && cp "$(dirname "$SKILL_PATH")/bin/controlroom" "$(dirname "$SKILL_PATH")/bin/controlroom-pager" "$(dirname "$SKILL_PATH")/bin/controlroom-pages" ~/.local/bin/ && chmod +x ~/.local/bin/controlroom ~/.local/bin/controlroom-pager ~/.local/bin/controlroom-pages
+mkdir -p ~/.local/bin && cp "$(dirname "$SKILL_PATH")/bin/controlroom" "$(dirname "$SKILL_PATH")/bin/controlroom-pager" "$(dirname "$SKILL_PATH")/bin/controlroom-md2html" "$(dirname "$SKILL_PATH")/bin/controlroom-pages" ~/.local/bin/ && chmod +x ~/.local/bin/controlroom ~/.local/bin/controlroom-pager ~/.local/bin/controlroom-md2html
 ```
 (If `$SKILL_PATH` is not set, resolve `bin/` relative to this SKILL.md.) Verify with `controlroom` (prints usage).
 
@@ -44,6 +44,7 @@ command = "controlroom detail"
 | `controlroom dream [--reason r] [--since ISO\|Nd] [--here]` | propose-only consolidation, on demand: render `prompts/dream.md` → `memory/.dream-brief.md`, launch a `dreamer-N` worker that reads files only and appends `P###` lines to `memory/proposed.md` + a report in `memory/dreams/`; `--here` prints the prompt instead |
 | `controlroom dream --check` | no LLM: every `← source` in the newest report + `proposed.md` resolves (path, `#anchor`, `:"phrase"`), `DONE dream`, `## Proposed (N)` matches, no dup slug, ≤ 10; warns when guarded files moved → `dream ok: …` in `agents.log` or a list + toast (rc 1) |
 | `controlroom promote P###… \| --all [--kind D\|L]` / `reject P### [why]` | P-line → real `D`/`L` line via `decide`/`lesson` (`[D]`/`[L]` tag at the start of the one-liner picks the file; struck `promoted-as D010`; dup slug refused) / strike `rejected: why` + copy to `memory/archive/` |
+| `controlroom status-page [--publish] [--snapshot] [--cost] [--quiet]` | render `docs/status/latest.{md,html}` from `STATUS.md` + `health` + the controller's `docs/status/preamble.md` (never overwritten; brief numbers → GitHub links; no `$` unless `--cost`); `--publish` commits **only** `docs/status/**` + `docs/.nojekyll` + `docs/index.html`, pushes, enables GitHub Pages when off, runs `docs/status/publishers.sh` (`published <name>` lines), logs `logs/publish.log`. `launch`/`land` call it in the background — never by hand, never on a clock; opt out: D-line slug `status-page-off` or `CONTROLROOM_STATUS_PAGE=0` |
 | `controlroom-pages push <files>` / `url` / `status` | publish rendered status files to GitHub Pages via an orphan `gh-pages` branch force-pushed as one commit (nothing in the source branch); flips the Pages source on first use; prints the URL; one line in `logs/publish.log` |
 | `controlroom event <kind> [arg]` / `/flush` | log an extension/tick event to `logs/agents.log` (`flush-requested <pct>` → marker + one toast; `compaction <tokensBefore>` → `logs/.compactions`; `ext-error <msg>`) / in the controller's pi: request the memory flush now |
 

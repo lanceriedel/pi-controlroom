@@ -20,6 +20,7 @@
 #   controlroom event <kind> [arg] [src] (008) log an extension/tick event to logs/agents.log: flush-requested <pct> [ext|manual] (toast once, marker) · compaction <tokensBefore> (logs/.compactions) · ext-error <msg>
 #   controlroom verify <agent> · lastline <agent> · resume <agent> [note] · resume-stalled [note] · strip-restart [--pane P] · strip-check [--force] · detail|detail-on|detail-off   (worker state from the pane · re-prompt + re-arm · pager (this workspace only) · relaunch a dead pager · strip detail)
 #   <agent> may be `<machine>/<agent>` (a saved `herdr machine`) for verify · lastline · resume · watch — translated to `herdr --machine <machine>` (015)
+#   controlroom status-page [--publish] [--snapshot] [--cost] [--quiet]   (015) docs/status/latest.{md,html} from STATUS.md + health + docs/status/preamble.md (yours); --publish → commit docs/status/** · GitHub Pages (enables it) · docs/status/publishers.sh · logs/publish.log. launch/land call it (opt-out: D-line slug status-page-off or CONTROLROOM_STATUS_PAGE=0)
 #   controlroom cancel --prune-fired    (012) drop fired/cancelled one-shot rows from AUTOMATIONS.md (ids never reused) · touch logs/AUTOPROMPT-OFF = per-room kill switch (tick + strip)
 set -u
 CMD=${1:-help}; shift || true
@@ -994,7 +995,7 @@ def refresh(force=False,quiet=False):
             if is_ctl(n,lab) or prev is None or prev==st: continue
             if st=="blocked": events.append((f"[{lab}] worker {n} NEEDS YOU",f"herdr --machine {lab} agent focus {n}","request"))
             elif prev=="working" and st in ("done","idle"): events.append((f"[{lab}] worker {n}: finished ({st})",f"controlroom verify {lab}/{n} · results are in the remote clone","done"))
-        if old and old.get("reachable") is False and now-(old.get("since") or now)>=300: events.append((f"[{lab}] reachable again",f"down {max(1,int((now-(old.get('since') or now))//60))}m","done"))   # (015.1) one-tick blips (ssh timeouts) are not events — graph-search logged 25 "down 1m" in a day
+        if old and old.get("reachable") is False: events.append((f"[{lab}] reachable again",f"down {max(1,int((now-(old.get('since') or now))//60))}m","done"))
         c["machines"][lab]={"target":m.get("target",""),"reachable":True,"since":old.get("since") if old.get("reachable") else now,"last_ok":now,"agents":new,"err":None}
     c["updated"]=now; save(c)
     for t,b,s in events: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",t,b,s],env=dict(os.environ,ROOT=ROOT),timeout=10)
@@ -1099,6 +1100,161 @@ PY
 }
 # ---- end rooms ----
 
+# ---- status page (015) ----  `controlroom status-page [--publish] [--snapshot] [--cost] [--quiet]` — docs/status/latest.{md,html} from STATUS.md + health + a hand-written preamble; `--publish` → GitHub Pages + docs/status/publishers.sh. Event-driven: launch/land call sp_hook; never on a clock.
+# status_py <render|publish> [flags]; data via argv/env (stdin is the heredoc). Repo URL: CONTROLROOM_REPO_URL or `git remote get-url origin`; branch from git. Only docs/status/** docs/.nojekyll docs/index.html are ever committed.
+status_py(){ ROOT="$ROOT" SELF="$0" LOG="$LOG" python3 - "$@" <<'PY'
+import os,re,sys,glob,json,subprocess,shutil,datetime,time
+root=os.environ["ROOT"]; SELF=os.environ["SELF"]; LOG=os.environ["LOG"]; cmd,args=sys.argv[1],sys.argv[2:]; quiet="--quiet" in args
+BR=os.path.join(root,"docs/briefs"); ST=os.path.join(BR,"STATUS.md"); SD=os.path.join(root,"docs/status"); MD=os.path.join(SD,"latest.md"); HT=os.path.join(SD,"latest.html"); PRE=os.path.join(SD,"preamble.md"); PUB=os.path.join(SD,"publishers.sh")
+now=datetime.datetime.now().astimezone(); stamp=now.strftime("%Y-%m-%d %H:%M %Z"); today=now.date().isoformat()
+def say(*a): quiet or print(*a)
+def die(m): print(m,file=sys.stderr); sys.exit(1)
+def sh(c,t=20,**k):
+    try: r=subprocess.run(c,capture_output=True,text=True,timeout=t,cwd=root,**k); return r.returncode,r.stdout.strip(),r.stderr.strip()
+    except subprocess.TimeoutExpired: return 124,"",f"timeout {t}s"
+    except FileNotFoundError: return 127,"",f"{c[0]}: not found"
+def branch(): rc,o,_=sh(["git","rev-parse","--abbrev-ref","HEAD"]); return o if rc==0 and o and o!="HEAD" else "master"
+def repo_url():   # → (https://github.com/org/repo or None, org, repo)
+    u=os.environ.get("CONTROLROOM_REPO_URL") or sh(["git","remote","get-url","origin"])[1]
+    m=re.match(r"(?:git@|https?://)([\w.-]+)[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$",u or "")
+    return (f"https://{m.group(1)}/{m.group(2)}/{m.group(3)}",m.group(2),m.group(3)) if m and "github" in m.group(1) else (None,None,None)
+URL,ORG,REPO=repo_url(); BRANCH=branch(); BASE=f"{URL}/blob/{BRANCH}/" if URL else "../"   # no GitHub remote → relative links (docs/status → repo root)
+def ref(rel): return BASE+rel
+briefs={m.group(1):f for f in sorted(glob.glob(os.path.join(BR,"[0-9][0-9][0-9]-*.md"))) for m in [re.match(r"(\d{3})-",os.path.basename(f))]}
+results={m.group(1):f for f in sorted(glob.glob(os.path.join(BR,"results","[0-9][0-9][0-9]-*.md"))) for m in [re.match(r"(\d{3})-",os.path.basename(f))]}
+def design(n):   # first docs/design/*.md a brief header (first 15 lines) or its result names
+    for f in (briefs.get(n),results.get(n)):
+        if f and os.path.exists(f):
+            m=re.search(r"docs/design/([\w.-]+\.md)|\(\.\./design/([\w.-]+\.md)\)","".join(open(f,errors="replace").readlines()[:15 if f==briefs.get(n) else 400]))
+            if m: return "docs/design/"+(m.group(1) or m.group(2))
+def brieflink(n,slug="",full=True):   # full: `NNN · result · design`; inline prose refs get just the number linked
+    if n not in briefs: return n+slug
+    s=f"[{n}]({ref('docs/briefs/'+os.path.basename(briefs[n]))})"
+    if not full: return s
+    if n in results: s+=f" · [result]({ref('docs/briefs/results/'+os.path.basename(results[n]))})"
+    d=design(n); return s+(f" · [design]({ref(d)})" if d else "")
+def abslink(m):   # [text](relative) in STATUS.md → absolute (STATUS.md lives in docs/briefs/)
+    t,u=m.group(1),m.group(2)
+    if re.match(r"^(https?://|#|mailto:)",u): return m.group(0)
+    return f"[{t}]({ref(os.path.normpath(os.path.join('docs/briefs',u)))})"
+LINK=re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)"); CODE=re.compile(r"`[^`]*`")
+REF=re.compile(r"(?<![\w/.-])(\d{3})(-[a-z0-9][\w-]*)?(?![\w.])")
+def linkify(cell):   # rewrite existing links, then link bare NNN / NNN-slug brief refs outside links and code spans; a cell that IS a brief ref gets result/design too
+    m=REF.fullmatch(cell.strip())
+    if m: return brieflink(m.group(1),m.group(2) or "")
+    out,pos=[],0
+    for m in re.finditer(r"%s|%s"%(LINK.pattern,CODE.pattern),cell):
+        out.append(REF.sub(lambda k: brieflink(k.group(1),k.group(2) or "",False),cell[pos:m.start()])); out.append(abslink(m) if m.group(0).startswith("[") else m.group(0)); pos=m.end()
+    out.append(REF.sub(lambda k: brieflink(k.group(1),k.group(2) or "",False),cell[pos:])); return "".join(out)
+def sections():   # STATUS.md → {lower-section-title: [lines]} + head lines
+    secs={"":[]}; cur=""
+    for l in open(ST,errors="replace").read().splitlines():
+        if l.startswith("## "): cur=l[3:].strip().lower(); secs[cur]=[]
+        else: secs[cur].append(l)
+    return secs
+def table(lines): return [[x.strip() for x in l.strip().strip("|").split("|")] for l in lines if l.startswith("|") and not re.match(r"^\|[\s:|-]+\|?$",l)]
+def sec(secs,prefix): return next((v for k,v in secs.items() if k.startswith(prefix)),[])
+def tbl(hdr,rows): return ["| "+" | ".join(hdr)+" |","|"+"---|"*len(hdr)]+["| "+" | ".join(linkify(c) for c in r)+" |" for r in rows] if rows else ["_(none)_"]
+TEMPLATE=f"""<!-- status-page preamble template — this file is yours: write the room's goal/thesis and what comes next; `controlroom status-page` never overwrites it. Delete this comment when done. -->
+# {os.path.basename(root)} — where we stand
+
+**Goal:** _(two or three sentences: what this room is trying to prove or build, and how we will know)_
+
+## Next, in order
+1. _…_
+
+## Open questions
+- _…_
+"""
+def render():
+    os.path.exists(ST) or die("no docs/briefs/STATUS.md — nothing to render (controlroom init)")
+    os.makedirs(SD,exist_ok=True); os.path.exists(PRE) or open(PRE,"w").write(TEMPLATE)
+    secs=sections(); pre=open(PRE,errors="replace").read().rstrip(); out=[pre,""]
+    src=f"Source: [{ORG}/{REPO}]({URL}/tree/{BRANCH}) · " if URL else ""
+    out.append(f"Generated by `controlroom status-page` · {stamp} · republished after every launch and land. {src}[board]({ref('docs/briefs/STATUS.md')}) · [briefs]({ref('docs/briefs')}) · [results]({ref('docs/briefs/results')})"+(f" · [design docs]({ref('docs/design')})" if os.path.isdir(os.path.join(root,'docs/design')) else "")); out.append("")
+    m=re.search(r"^.*MODE:.*$","\n".join(secs[""]),re.M)
+    if m: out+=[linkify(m.group(0).strip()),""]
+    W=[r for r in table(sec(secs,"workers")) if r[0]!="pane"]
+    out+=["## Workers"]+tbl(["agent","brief","state","result"],[[r[1],r[2],r[3],r[4] if len(r)>4 else "—"] for r in W if len(r)>=4])+[""]
+    D=[l for l in sec(secs,"decisions waiting") if l.strip() and not l.startswith("_(none")]
+    out+=["## Decisions waiting on the human"]+([linkify(l) for l in D] if D else ["_(none)_"])+[""]
+    if "--no-health" not in args and shutil.which("herdr"):   # live view: this room's agents only (session dir encodes the cwd) or anyone on the board
+        rc,o,_=sh([SELF,"health","--json"],25); key="-"+root.replace("/","-")+"--"; rows=[]
+        try: H=json.loads(o) if rc==0 and o else {}
+        except Exception: H={}
+        brd={r[1]:r[2] for r in W if len(r)>=3}
+        for n,h in sorted(H.items()):
+            if key in (h.get("path") or "") or n in brd:
+                rows.append([n,h.get("status","?"),brd.get(n,"—"),h.get("last_write") or "—",h.get("flag") or "—"]+([f"${h.get('cost',0):.2f} · ctx {h.get('ctx_pct','?')}%"] if "--cost" in args else []))
+        out+=["## Live (from `controlroom health`)"]+tbl(["agent","status","brief","last write","flag"]+(["cost"] if "--cost" in args else []),rows)+[""]
+    N=[l for l in sec(secs,"notes") if l.startswith("- ")][:5]
+    if N: out+=["## Recent notes"]+[linkify(l) for l in N]+[""]
+    L=[r for r in table(sec(secs,"landed")) if r[0]!="when"]
+    out+=["## Landed"]+tbl(["when","brief","worker","result","one-liner"],[r[:5]+["—"]*(5-len(r[:5])) for r in L])+[""]
+    R=[r for r in table(sec(secs,"retired")) if r[0]!="agent"]
+    out+=["## Retired workers"]+tbl(["agent","when","reason"],[r[:3] for r in R])+[""]
+    txt="\n".join(out); tmp=MD+".tmp"; open(tmp,"w").write(txt); os.replace(tmp,MD); wrote=[MD]
+    if "--snapshot" in args: snap=os.path.join(SD,f"{today}-latest.md"); open(snap,"w").write(txt); wrote.append(snap)
+    m2h=os.path.join(os.path.dirname(os.path.realpath(SELF)),"controlroom-md2html")
+    m2h=m2h if os.path.exists(m2h) else shutil.which("controlroom-md2html")
+    if m2h:
+        rc,o,e=sh(["python3",m2h,MD,HT],30)
+        if rc==0: wrote.append(HT)
+        else: say(f"md2html failed: {e[-200:]}")
+    else: say("controlroom-md2html not found (next to controlroom or on PATH) — wrote .md only")
+    say("status-page → "+" ".join(os.path.relpath(w,root) for w in wrote)+(f"  (links → {URL}/blob/{BRANCH})" if URL else "  (no GitHub remote — relative links; set CONTROLROOM_REPO_URL)"))
+def publish():
+    gh="pushed"; pages=""; url=""; n_pub=0
+    docs=os.path.join(root,"docs"); nj=os.path.join(docs,".nojekyll"); ix=os.path.join(docs,"index.html")
+    os.path.exists(nj) or open(nj,"w").write("")
+    os.path.exists(ix) or open(ix,"w").write(f'<!doctype html><meta charset="utf-8"><title>{os.path.basename(root)}</title>\n<meta http-equiv="refresh" content="0; url=status/latest.html">\n<p><a href="status/latest.html">{os.path.basename(root)} — status (latest)</a></p>\n')
+    os.path.exists(PUB) or open(PUB,"w").write("#!/bin/bash\n# docs/status/publishers.sh — extra publishers for `controlroom status-page --publish` (015). chmod +x to enable. Env: STATUS_MD STATUS_HTML STATUS_URL ROOT.\n# Each publisher prints one line `published <name>` on success (counted in logs/publish.log).\n# lancedocs example (Lance's laptop):\n#   D=$HOME/.brain/memory-bank/personal/docs/$(basename \"$ROOT\"); mkdir -p \"$D\" && cp \"$STATUS_HTML\" \"$D/where-we-stand-latest.html\" \\\n#     && BRAIN_ROOT=$HOME/.brain bash ~/.brain/memory-bank/personal/docs/deploy-lancedocs.sh </dev/null >/dev/null 2>&1 && echo \"published lancedocs\"\n")
+    P=["docs/status","docs/.nojekyll","docs/index.html"]   # the only paths this command ever commits
+    sh(["git","add","--"]+P)
+    if sh(["git","diff","--cached","--quiet","--"]+P)[0]==0: gh="unchanged"
+    else:
+        rc,_,e=sh(["git","commit","-q","-m",f"status page {stamp}","--"]+P,30)
+        if rc!=0: gh="failed:commit"; say("commit failed:",e[-200:])
+    if gh!="failed:commit" and sh(["git","remote","get-url","origin"])[0]==0:
+        rc,_,e=sh(["git","pull","--rebase","--autostash","-q","origin",BRANCH],60)
+        if rc!=0: sh(["git","rebase","--abort"]); ("couldn't find remote ref" in e or "Couldn't find remote ref" in e) or say("pull --rebase failed (non-fatal, pushing anyway):",e.splitlines()[-1][:160] if e else rc)
+        rc,_,e=sh(["git","push","-q","-u","origin",BRANCH],60)
+        if rc!=0 and (gh=="pushed" or sh(["git","rev-list","--count",f"origin/{BRANCH}..HEAD"])[1] not in ("","0")): gh=f"failed:push({(e.splitlines() or ['?'])[-1][:80]})"
+    elif gh!="failed:commit": gh="failed:no-origin"
+    rc,o,_=sh(["git","ls-files","-s","docs"]); links=[l.split("\t")[-1] for l in o.splitlines() if l.startswith("120000 ")]   # a committed symlink under docs/ makes the Pages artifact tar fail → page never builds (pi-controlroom 11-08)
+    warn=f"⚠ symlink under docs/ breaks the Pages build: {' '.join(links)} (git rm it)" if links else ""; warn and say(warn)
+    if ORG:   # GitHub Pages: enable once (branch from git, path /docs), then read html_url
+        G=os.environ.get("CONTROLROOM_GH","gh")
+        if not shutil.which(G): pages="Pages: gh not available (brew install gh; gh auth login) — not enabled"
+        else:
+            rc,o,e=sh([G,"api",f"repos/{ORG}/{REPO}/pages"],20)
+            if rc!=0 and "404" in (o+e):
+                rc,o,e=sh([G,"api","-X","POST",f"repos/{ORG}/{REPO}/pages","-f",f"source[branch]={BRANCH}","-f","source[path]=/docs"],30); pages="Pages: enabled now" if rc==0 else f"Pages: enable failed ({(e or o)[-120:]})"
+            elif rc!=0: pages=f"Pages: gh api failed ({(e or o)[-120:]})"
+            try: url=json.loads(o).get("html_url","") if rc==0 else ""
+            except Exception: url=""
+            if url:
+                url=url.rstrip("/")+"/status/latest.html"; rc,code,_=sh(["curl","-sI","-o","/dev/null","-w","%{http_code}",url],20); bs=sh([G,"api",f"repos/{ORG}/{REPO}/pages/builds/latest","-q",".status"],20)[1]; pages=(pages+" · " if pages else "")+f"http={code or '000'}"+(f" build={bs}" if bs else "")+(" (just enabled → first build takes ~1 min; private Pages may need SSO in a browser)" if code not in ("200","301","302") else "")
+    else: pages="Pages: no GitHub remote"
+    if os.path.exists(PUB) and os.access(PUB,os.X_OK):   # extra publishers: each prints `published <name>`
+        rc,o,e=sh(["bash",PUB],900,env=dict(os.environ,STATUS_MD=MD,STATUS_HTML=HT,ROOT=root,STATUS_URL=url)); n_pub=sum(1 for l in o.splitlines() if l.startswith("published ")); rc==0 or say(f"publishers.sh rc={rc}: {(e or o)[-200:]}")
+    line=f"[{now:%Y-%m-%d %H:%M}] status-page ghpages={gh} publishers={n_pub} url={url or '-'}"+(f" ({' · '.join(x for x in (pages,warn) if x)})" if pages or warn else "")
+    os.makedirs(os.path.dirname(LOG),exist_ok=True); open(os.path.join(os.path.dirname(LOG),"publish.log"),"a").write(line+"\n"); say(line)
+    if gh=="pushed": open(LOG,"a").write(f"[{now:%m-%d %H:%M}] status page — pushed {url or BRANCH}\n")
+    sys.exit(0 if gh in ("pushed","unchanged") else 1)
+if cmd=="render": render()
+elif cmd=="publish": publish()
+else: die(f"status_py: unknown {cmd}")
+PY
+}
+sp_hook(){   # (015) after launch/land: republish in the background, 60 s alarm, never blocks or fails the caller. Opt-out: D-line slug `status-page-off` or CONTROLROOM_STATUS_PAGE=0
+  [ "${CONTROLROOM_STATUS_PAGE:-1}" = 0 ] && return 0
+  grep -q '^- D[0-9]\{3\} .*\*\*status-page-off\*\*' "$ROOT/docs/briefs/memory/DECISIONS.md" 2>/dev/null && return 0
+  [ -f "$ROOT/docs/briefs/STATUS.md" ] || return 0
+  ( perl -e 'alarm 60; exec @ARGV' -- "$0" status-page --publish --quiet >/dev/null 2>&1 & ) ; return 0
+}
+# ---- end status page ----
+
 case "$CMD" in
   __lib__) return 0 2>/dev/null || exit 0 ;;   # sourced for verify()
   verify) [ -n "${1:-}" ] || { echo "usage: controlroom verify <agent>"; exit 2; }; verify "$1" ;;   # (012) 011 #16
@@ -1170,6 +1326,8 @@ print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status" and str
     herdr agent prompt "$NAME" "$PRE $BRIEF and execute it end to end. Work autonomously; do not ask questions unless truly blocked. Save deliverables where the brief specifies and write the final summary to docs/briefs/results/ as the brief says. Save partial results early and often. When done, reply with the single line: DONE $NAME" >/dev/null 2>&1
     row=$(cr5 auto arm "$NAME" "integrate $(basename "$BRIEF" .md) when DONE" "launch $(date '+%m-%d %H:%M')")   # (005) watch row; the tick verifies/toasts and survives restarts
     note "launched $NAME" "$BRIEF in $pane" none; echo "$NAME → $pane ($LABEL), ${row:-watch row NOT armed (ledger locked >10 s) — the tick re-arms it from STATUS.md once the board row says working}"   # (012)
+
+    sp_hook   # (015) republish the status page (background, 60 s alarm)
     ;;
   watch)
     for a in "$@"; do (
@@ -1296,7 +1454,8 @@ for l in reversed(lines):
   cancel) cr5 auto cancel "$@" ;;         # controlroom cancel A### (or <agent> for its watch row)
   # ---- end 006 case arms ----
   # ---- memory (004) case arms ----
-  decide|lesson|supersede|memory|land) mem_py "$CMD" "$@" ;;   # see mem_py above · docs/design/durable-controlroom.md §1 §5
+  decide|lesson|supersede|memory) mem_py "$CMD" "$@" ;;   # see mem_py above · docs/design/durable-controlroom.md §1 §5
+  land) mem_py land "$@"; rc=$?; sp_hook; exit $rc ;;   # (015) land, then republish the status page (background)
   # ---- end memory (004) case arms ----
   # ---- dream (007) case arms ----
   dream)   # controlroom dream [--reason r] [--since ISO|Nd] [--here] | --check — render prompts/dream.md → memory/.dream-brief.md, launch dreamer-N (or print it with --here)
@@ -1312,5 +1471,9 @@ for l in reversed(lines):
   # ---- compaction (008) case arms ----
   event) cr5 event "$@" ;;   # controlroom event <kind> [arg] — called by extensions/controlroom.ts (flush-requested · compaction · ext-error) and by the tick fallback
   # ---- end compaction (008) case arms ----
+  # ---- status page (015) case arms ----
+  status-page)   # controlroom status-page [--publish] [--snapshot] [--cost] [--quiet] [--no-health] — render docs/status/latest.{md,html}; --publish commits docs/status/** only, pushes, enables Pages, runs publishers.sh, logs/publish.log
+    status_py render "$@" || exit 1; case " $* " in *" --publish "*) status_py publish "$@";; esac ;;
+  # ---- end status page (015) case arms ----
   *) sed -n '2,/^set -u/{/^set -u/!p;}' "$0" ;;   # help = the header comment block, however long it grows
 esac
