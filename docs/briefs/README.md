@@ -10,6 +10,7 @@ Newest first; the last 8 are shown, older briefs are folded below.
 
 | Brief | Stream | Needs external resources? |
 |---|---|---|
+| [015-status-page](015-status-page.md) | `controlroom status-page [--publish]`: project page from STATUS/health with brief links → GitHub Pages + publishers.sh; auto after launch/land | gh API (Pages) |
 | [014-prompt-uptake](014-prompt-uptake.md) | Tick detects error-aborted controller turns after a prompt and re-prompts; defer prompts right after machine wake | no |
 | [013-tobi-comparison](013-tobi-comparison.md) | Lance-facing doc: pi-controlroom 0.2.0 vs Tobi's harness — features, pros/cons, proven vs on paper | no |
 | [012-close-the-loop](012-close-the-loop.md) | Fix 011 blockers/should-fix, 009 bugs (stuck? cache-warm, flush<75, init collision), heartbeat gate, Boot round-wake; re-grade S3/S6 | no |
