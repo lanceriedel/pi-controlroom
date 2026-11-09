@@ -203,7 +203,7 @@ Keys inside the strip: wheel / arrows / `j` `k` / PgUp PgDn / space · `g` top �
 ## Status page (where it is published)
 
 `controlroom status-page` (015) renders `docs/status/latest.md` + `.html` from the room's files. **Where the HTML goes is a
-separate concern**, and the default is a blob-like store, not the source branch:
+separate concern**, and the default is a blob-like store, not the source branch. **Bookmark note:** on the `gh-pages` branch the page is served at `https://<org>.github.io/<repo>/status/latest.html` (the same `/status/latest.html` path as before, but the old `master:/docs` source is switched off — anything that linked `…/docs/status/…` on the source branch must move):
 
 - **`controlroom-pages push <files>`** (016) copies the files to an **orphan `gh-pages` branch** that is force-pushed as **one
   commit** every time (`status/<file>` + `.nojekyll` + `index.html` redirect), then points GitHub Pages at that branch
