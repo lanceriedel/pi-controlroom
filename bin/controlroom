@@ -1198,10 +1198,19 @@ def render():
         rc,o,_=sh([SELF,"health","--json"],25); key="-"+root.replace("/","-")+"--"; rows=[]
         try: H=json.loads(o) if rc==0 and o else {}
         except Exception: H={}
-        brd={r[1]:r[2] for r in W if len(r)>=3}
+        brd={r[1].split("/")[-1]:r[2] for r in W if len(r)>=3}   # board agent → brief; `dev002/gs-x` and `gs-x` are the same worker
         for n,h in sorted(H.items()):
-            if key in (h.get("path") or "") or n in brd:
-                rows.append(([n] if AG else [])+[brd.get(n,"—"),h.get("status","?"),h.get("last_write") or "—",h.get("flag") or "—"]+([f"${h.get('cost',0):.2f} · ctx {h.get('ctx_pct','?')}%"] if "--cost" in args else []))
+            b=brd.get(n.split("/")[-1])
+            if key in (h.get("path") or "") or b:
+                who=b or (f"_{n}_ (controller)" if n.endswith("controller") or n.startswith("controller") else f"_{n}_")   # (015.4) no brief → name the row anyway; anonymous rows are useless
+                rows.append(([n] if AG else [])+[who,h.get("status","?"),h.get("last_write") or "—",h.get("flag") or "—"]+([f"${h.get('cost',0):.2f} · ctx {h.get('ctx_pct','?')}%"] if "--cost" in args else []))
+        try:   # (015.4) remote workers (logs/.machines-cache.json, refreshed by the tick) — health is local-only, so without this the Live table only shows laptop agents
+            mc=json.load(open(os.path.join(root,"logs/.machines-cache.json")))
+            for lab,e in mc.get("machines",{}).items():
+                for a in e.get("agents",[]):
+                    n=a.get("name") or ""; b=brd.get(n.split("/")[-1])
+                    if b and not any(r[-4 if "--cost" not in args else -5]==b for r in rows): rows.append(([f"{lab}/{n}"] if AG else [])+[b,a.get("agent_status","?")+("" if e.get("reachable") else " (host unreachable)"),"—",f"on {lab}"]+(["—"] if "--cost" in args else []))
+        except Exception: pass
         out+=["## Live (from `controlroom health`)"]+tbl((["agent"] if AG else [])+["brief","status","last write","flag"]+(["cost"] if "--cost" in args else []),rows)+[""]
     N=[l for l in sec(secs,"notes") if l.startswith("- ")][:5]
     if N: out+=["## Recent notes"]+[linkify(l) for l in N]+[""]
