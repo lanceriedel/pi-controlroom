@@ -424,7 +424,7 @@ def tick():
     if not lock(wait=False): return   # (012) another tick (or a CLI arm) holds the ledger — skip this pass
     try: acts=tick_pass(dry)
     finally: unlock()
-    if verbose: print("\n".join(("DRY  " if dry else "")+a for a in acts) if acts else "tick: nothing to do")
+    if verbose and (acts or dry or os.environ.get("CR_TICK_IDLE_LINE")): print("\n".join(("DRY  " if dry else "")+a for a in acts) if acts else "tick: nothing to do")   # (015.2) idle passes are silent (actions only); --dry-run and CR_TICK_IDLE_LINE=1 still say "nothing to do"
 def tick_pass(dry):
     acts=[]; pre,rows=load_autos(); changed=[not os.path.exists(AUTOS)]; cache=load_cache(); st=load_state()
     if POST and st.get("skipped")!=len(POST): acts.append(f"tick: skipped {len(POST)} unparseable row(s) in AUTOMATIONS.md (kept verbatim below the table)"); st["skipped"]=len(POST)   # (012) 011 #3, logged once per count
@@ -1454,7 +1454,7 @@ PY
       mypg=$(ps -o pgid= -p $$ | tr -d ' '); others=$(pgrep -f "controlroom tick .*--loop|controlroom tick --loop" 2>/dev/null | while read -r pid; do [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] && continue; [ "$(ps -o pgid= -p $pid 2>/dev/null | tr -d ' ')" = "$mypg" ] && continue; d=$(readlink /proc/$pid/cwd 2>/dev/null || lsof -a -p $pid -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'); [ "$d" = "$ROOT" ] && echo $pid; done | tr '\n' ' ')   # (014.4) one loop per room: refuse when another loop process for this ROOT is alive (the lock keeps extras safe, but one is enough)
       if [ -n "$others" ] && [ -z "${CR_LOOP_FORCE:-}" ]; then echo "tick: a loop is already running for $ROOT (pid $others) — not starting another (kill it, or CR_LOOP_FORCE=1)"; exit 0; fi
       echo "tick --loop: every 60 s — reconciles AUTOMATIONS.md (watch/wake/flush rows), health (stuck?/spinning?), strip; prints only actions; idle passes write logs/.tick.last silently"
-      n=0; while true; do out=$("$0" tick --root "$ROOT" $PASS 2>&1); case "$out" in "tick: nothing to do") n=$((n+1)); [ $((n % 60)) -eq 0 ] && echo "[$(date '+%H:%M')] tick: quiet for $n passes";; *) printf '%s\n' "$out";; esac; sleep 60; done
+      n=0; while true; do out=$("$0" tick --root "$ROOT" $PASS 2>&1); case "$out" in ""|"tick: nothing to do") n=$((n+1)); [ $((n % 60)) -eq 0 ] && echo "[$(date '+%H:%M')] tick: quiet for $n passes";; *) printf '%s\n' "$out";; esac; sleep 60; done
     fi
     cr5 tick $PASS
     case " $PASS " in *" --dry-run "*) ;; *) rooms_py refresh --quiet; "$0" strip-check --quiet >/dev/null 2>&1;; esac ;;   # (015) remote machines → logs/.machines-cache.json (+ [label] events) · relaunch a dead strip pager
