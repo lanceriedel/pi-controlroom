@@ -623,7 +623,12 @@ elif cmd=="play":
     lib("note","PLAY",f"pause since {p['since'][11:]} ended — launches allowed again","done"); print(f"play — paused since {p['since']} ended"+(f"; {k} play row cancelled" if k else ""))
     unlock()
     if any(r["state"]=="held" for r in rows): tick()   # (006) fire held rows now, collapsed into one controller prompt
-elif cmd=="pause-hdr":   # header fragment for status_text; empty when not paused
+elif cmd=="pause-hdr":   # header fragment for status_text; empty when not paused. (015.3) always leads with the tick's state: `tick ok HH:MM:SS` dim, or a bold red NO TICK warning with the fix
+    try: t=float(open(HEART).read().split()[0])
+    except Exception: t=None
+    if t is None: print(f"   {RED}⚠ NO TICK — never ran here — controlroom tick-install (macOS) or controlroom tick --loop in a pane{OFF}")
+    elif now-t>300: print(f"   {RED}⚠ NO TICK — last {time.strftime('%H:%M',time.localtime(t))} ({agem((now-t)/60)} ago) — nothing fires: wakes, watches, flush. Fix: controlroom tick-install (macOS) or controlroom tick --loop{OFF}")
+    else: print(f"   {DIM}tick ok {time.strftime('%H:%M:%S',time.localtime(t))}{OFF}")
     p=load_paused()
     if p:
         n=sum(1 for a in agents().values() if a["agent_status"]=="working"); pre,rows=load_autos()
