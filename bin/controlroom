@@ -45,7 +45,8 @@ except Exception: print("")')
   herdr $M agent read "$1" --source visible --lines 200 --format text 2>/dev/null | NAME="$1" python3 -c '
 import sys,re,os
 t=sys.stdin.read(); name=os.environ["NAME"]; tail="\n".join(t.splitlines()[-40:])
-if re.search(r"daily premium model limit|BadRequestError|RateLimitError|\"error\":\{|Error: [45]\d\d|overloaded_error|ECONNREFUSED", tail): print("crashed")
+if re.search(r"●\s*Agents\b.*\brunning\b", tail): print("working")   # (015.8) pi-subagents child still running: Herdr says done, the pane says `● Agents · 1 running · <scout>` — it is working, not stalled (gs-controller 11-10)
+elif re.search(r"daily premium model limit|BadRequestError|RateLimitError|\"error\":\{|Error: [45]\d\d|overloaded_error|ECONNREFUSED", tail): print("crashed")
 elif re.search(r"^\s*DONE\s+(%s|\d{3})\b" % re.escape(name), t, re.M): print("done")
 else: print("stalled")'
 }
