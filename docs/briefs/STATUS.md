@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-10 08:02 — Round A037 #1: room empty. Mac rebooted 07:32 → all 4 ticks dead (plist not in LaunchAgents) → fixed in tick-install (L044), all rooms re-bootstrapped; pane name lost again → reclaimed, Boot step 5 now says to. Waiting on Lance: pi-host inputs (017).
 - 11-09 13:00 — Rounds A036 #2–#4 (overnight turns aborted: timeouts/connection errors while asleep; 014 re-prompted each). Room empty. gs-controller's 015 feedback fixed (e691745): header-aware tables, agent columns off by default, installer links md2html+pages, docs note on gh-pages path. Round back to daily (A037).
 - 11-08 16:40 — Round A036 #1: 015 landed. Live page https://lanceriedel.github.io/pi-controlroom/status/latest.html (Pages build was failing on a stray self-symlink `docs/briefs/briefs` → removed). dev002 unreachable since 14:56 (network).
 - 11-08 — Lance (via gs-controller) asked for `controlroom status-page [--publish]` (event-driven project page → GitHub Pages + publishers; auto after launch/land). Brief 015 launched; round back to 2h.
