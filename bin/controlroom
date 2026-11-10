@@ -941,7 +941,7 @@ import json,os,re,socket,subprocess,sys,time
 from concurrent.futures import ThreadPoolExecutor
 ROOT=os.environ["ROOT"]; SELF=os.environ["SELF"]; WS=os.environ.get("WS") or None; LOGS=os.path.join(ROOT,"logs"); LOG=os.environ["LOG"]
 MC=os.path.join(LOGS,".machines-cache.json"); CTRL=os.path.join(LOGS,".controller"); STATUS=os.path.join(ROOT,"docs/briefs/STATUS.md")
-BUDGET=float(os.environ.get("CONTROLROOM_MACHINES_BUDGET",3)); TTL=float(os.environ.get("CONTROLROOM_MACHINES_TTL",60))
+BUDGET=float(os.environ.get("CONTROLROOM_MACHINES_BUDGET",8)); TTL=float(os.environ.get("CONTROLROOM_MACHINES_TTL",60)); MISSES=int(os.environ.get("CONTROLROOM_MACHINES_MISSES",3))   # (015.5) 8 s per call (a cold ssh/WARP handshake is ~1 s, worse after sleep); a machine is "unreachable" only after 3 consecutive misses
 now=time.time(); cmd,args=sys.argv[1],sys.argv[2:]
 RED,YEL,GRN,CYN,DIM,BOLD,OFF="\033[31;1m","\033[33m","\033[32m","\033[36m","\033[90m","\033[1m","\033[0m"
 COL={"working":YEL,"idle":GRN,"done":"\033[32;1m","blocked":RED,"crashed":RED,"stalled":"\033[35m","unknown":DIM,"stuck?":RED,"spinning?":YEL}
@@ -972,16 +972,16 @@ def refresh(force=False,quiet=False):
     c["machines"]={k:v for k,v in c.get("machines",{}).items() if k in labels}
     if not ms: c["updated"]=now; save(c); return c
     if not force and now-c.get("updated",0)<TTL: return c
-    deadline=now+BUDGET
+    deadline=now+BUDGET   # (unused since 015.5 — per-call timeouts)
     def q(m):
-        try: r=subprocess.run(["herdr","--machine",m["label"],"agent","list"],capture_output=True,text=True,timeout=max(0.5,deadline-time.time()))
+        try: r=subprocess.run(["herdr","--machine",m["label"],"agent","list"],capture_output=True,text=True,timeout=BUDGET)
         except subprocess.TimeoutExpired: return m,None,"timeout"
         except Exception as e: return m,None,str(e)[:60]
         try: ags=json.loads(r.stdout)["result"]["agents"]
         except Exception: return m,None,((r.stderr.strip().splitlines() or ["no json"])[-1])[:60]
         # (014.5) this room only: keep remote agents whose workspace has a pane cwd ending in this repo's HOME-relative path (remote-host.md: "same relative layout"). No pane info → keep all (old behaviour).
         try:
-            pr=subprocess.run(["herdr","--machine",m["label"],"pane","list"],capture_output=True,text=True,timeout=max(0.5,deadline-time.time()))
+            pr=subprocess.run(["herdr","--machine",m["label"],"pane","list"],capture_output=True,text=True,timeout=BUDGET)
             panes=json.loads(pr.stdout)["result"]["panes"]; rel=os.path.relpath(ROOT,os.path.expanduser("~")).rstrip("/")
             wss={pn.get("workspace_id") for pn in panes if (pn.get("cwd") or "").rstrip("/").endswith("/"+rel)}
             if panes: ags=[a for a in ags if a.get("workspace_id") in wss]
@@ -991,8 +991,10 @@ def refresh(force=False,quiet=False):
     events=[]
     for m,ags,err in res:
         lab=m["label"]; old=c["machines"].get(lab,{})
-        if ags is None:   # unreachable: keep last known agents (greyed on the strip), remember since when
-            e=dict(old); e.update(target=m.get("target",""),reachable=False,err=err,since=old.get("since") if old.get("reachable") is False else now); e.setdefault("agents",[]); c["machines"][lab]=e; continue
+        if ags is None:   # a miss: keep last known agents; only after MISSES consecutive misses is the machine "unreachable" (greyed, since=first miss)
+            e=dict(old); fails=old.get("fails",0)+1; e.update(target=m.get("target",""),fails=fails,err=err,first_miss=old.get("first_miss") or now); e.setdefault("agents",[])
+            if fails>=MISSES: e.update(reachable=False,since=old.get("since") if old.get("reachable") is False else e["first_miss"])
+            c["machines"][lab]=e; continue
         new=[{k:a.get(k) for k in ("name","pane_id","agent_status","workspace_id","tab_id")} for a in ags if a.get("name")]
         oldst={a.get("name"):a.get("agent_status") for a in old.get("agents",[])}
         for a in new:   # transitions → EVENTS (controllers excluded: they go idle after every prompt)
@@ -1001,7 +1003,7 @@ def refresh(force=False,quiet=False):
             if st=="blocked": events.append((f"[{lab}] worker {n} NEEDS YOU",f"herdr --machine {lab} agent focus {n}","request"))
             elif prev=="working" and st in ("done","idle"): events.append((f"[{lab}] worker {n}: finished ({st})",f"controlroom verify {lab}/{n} · results are in the remote clone","done"))
         if old and old.get("reachable") is False: events.append((f"[{lab}] reachable again",f"down {max(1,int((now-(old.get('since') or now))//60))}m","done"))
-        c["machines"][lab]={"target":m.get("target",""),"reachable":True,"since":old.get("since") if old.get("reachable") else now,"last_ok":now,"agents":new,"err":None}
+        c["machines"][lab]={"target":m.get("target",""),"reachable":True,"since":old.get("since") if old.get("reachable") else now,"last_ok":now,"agents":new,"err":None,"fails":0,"first_miss":None}
     c["updated"]=now; save(c)
     for t,b,s in events: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",t,b,s],env=dict(os.environ,ROOT=ROOT),timeout=10)
     if not quiet:
