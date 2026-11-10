@@ -1194,6 +1194,7 @@ def render():
     m=re.search(r"^.*MODE:.*$","\n".join(secs[""]),re.M)
     if m: out+=[linkify(m.group(0).strip()),""]
     FL=os.path.join(SD,"flags")   # (015.7) per-room default flags for every run incl. the launch/land hook — e.g. `--no-landed --agents` on one line
+    global args
     if os.path.exists(FL): args=open(FL).read().split()+args
     ALL=["workers","decisions","live","notes","landed","retired"]; SEC=set(ALL)   # (015.7) --sections a,b,c | --no-<section>: which generated sections appear below the preamble (default: all)
     for i,a in enumerate(args):
