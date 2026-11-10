@@ -1228,6 +1228,13 @@ def render():
     N=[l for l in sec(secs,"notes") if l.startswith("- ")][:5]
     if N and "notes" in SEC: out+=["## Recent notes"]+[linkify(l) for l in N]+[""]
     Ld=cols(sec(secs,"landed"),["when","brief","worker","result","one-liner"])
+    # (015.9) the preamble's narrative table goes stale (graph-search: table ended at 016 while the room was on 023). Any board brief (working or landed) whose number the preamble never mentions is listed here automatically — so the page is never behind the board even when --no-landed hides the ledger
+    pre_nums=set(re.findall(r"\b(\d{3})\b",pre)); gaps=[]
+    for w in Wd:
+        n=re.search(r"\b(\d{3})\b",w["brief"]); n and n.group(1) not in pre_nums and gaps.append([w["brief"],"🔄 "+w["state"],w["result"]])
+    for l in Ld:
+        n=re.search(r"\b(\d{3})\b",l["brief"]); n and n.group(1) not in pre_nums and gaps.append([l["brief"],"✅ landed "+l["when"],(l["one-liner"] if l["one-liner"] not in ("","—") else l["result"])])
+    if gaps and "landed" not in SEC: out+=["## Since the table above (not yet in the narrative — the controller should add these rows to `docs/status/preamble.md`)"]+tbl(["brief","state","result / one-liner"],sorted(gaps,key=lambda r:r[0]))+[""]
     if "landed" in SEC: out+=["## Landed"]+tbl(["when","brief"]+(["worker"] if AG else [])+["result","one-liner"],[[l["when"],l["brief"]]+([l["worker"]] if AG else [])+[l["result"],l["one-liner"]] for l in Ld])+[""]
     Rd=cols(sec(secs,"retired"),["agent","when","reason"])
     if AG and "retired" in SEC: out+=["## Retired workers"]+tbl(["agent","when","reason"],[[r["agent"],r["when"],r["reason"]] for r in Rd])+[""]
