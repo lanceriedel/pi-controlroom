@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-10 10:08 — **graph-search flush storm**: gs-controller at 167 % ctx (272k window), extension flush→/compact→compaction ×79 in 20 min (~$350), compaction never reduced tokens (no `compaction` entries written). Stopped it: held the flush marker, Esc, killed pid 9046, fresh `gs-controller` session booting from files (16 % ctx). Extension now has a 30-min breaker (27933ca). Open: why pi compaction fails at that size; a hard ceiling (ctx ≥ 120 % ⇒ stop prompting, toast 'start a fresh session').
 - 11-10 08:02 — Round A037 #1: room empty. Mac rebooted 07:32 → all 4 ticks dead (plist not in LaunchAgents) → fixed in tick-install (L044), all rooms re-bootstrapped; pane name lost again → reclaimed, Boot step 5 now says to. Waiting on Lance: pi-host inputs (017).
 - 11-09 13:00 — Rounds A036 #2–#4 (overnight turns aborted: timeouts/connection errors while asleep; 014 re-prompted each). Room empty. gs-controller's 015 feedback fixed (e691745): header-aware tables, agent columns off by default, installer links md2html+pages, docs note on gh-pages path. Round back to daily (A037).
 - 11-08 16:40 — Round A036 #1: 015 landed. Live page https://lanceriedel.github.io/pi-controlroom/status/latest.html (Pages build was failing on a stray self-symlink `docs/briefs/briefs` → removed). dev002 unreachable since 14:56 (network).
