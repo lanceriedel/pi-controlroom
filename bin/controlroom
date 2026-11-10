@@ -67,7 +67,7 @@ status_text(){
   DETAIL="$DETAIL" rooms_py header   # (015) `ROOMS  local ▶ctl (PRIMARY) ⇄ <machine> ▶ctl · MODE · sync` — only when `herdr machine list` has rows
   DETAIL="$DETAIL" rooms_py agents   # (015) AGENTS grouped by host: local (<hostname>) then one group per saved machine (remote agents from logs/.machines-cache.json)
   DETAIL="$DETAIL" cr5 strip   # TICK heartbeat line (+ COST in detail) (005)
-  printf ' PIPELINES  (last 10 by time · running=yellow · no-marker=no START/END lines in the log%s)\n' "$([ "$DETAIL" = 1 ] && echo ' · detail: show all')"
+  printf ' PIPELINES  (recent · running=yellow · aged out: done >24h, no-marker >6h, failed >7d%s)\n' "$([ "$DETAIL" = 1 ] && echo ' · detail: up to 30')"
   ROOT="$ROOT" DETAIL="$DETAIL" python3 - <<'PY'
 import os,re,time,glob
 root=os.environ["ROOT"]; detail=os.environ.get("DETAIL")=="1"; now=time.time()
@@ -77,7 +77,7 @@ def age(t):
 rows=[]
 for f in sorted(glob.glob(os.path.join(root,"logs","*.log"))):
     name=os.path.basename(f)[:-4]
-    if name in ("agents","tick"): continue   # (012) 011 #11: tick.log is the tick's own log, not a pipeline
+    if name in ("agents","tick","publish"): continue   # (012) 011 #11; publish.log is the status page's own log: tick.log is the tick's own log, not a pipeline
     try: lines=[l.rstrip() for l in open(f,errors="replace") if l.strip()]
     except Exception: continue
     mt=os.path.getmtime(f); last=lines[-1] if lines else ""
@@ -96,10 +96,15 @@ for f in sorted(glob.glob(os.path.join(root,"logs","*.log"))):
     else: st,col="no-marker","\033[90m"
     rows.append((mt,st,col,name,age(mt),(lm or last)[:80]))
 rows.sort(key=lambda r:-r[0])
-if not detail: rows=rows[:10]
-for mt,st,col,name,a,txt in rows:
+# (015.11) aggressive aging on the default strip: running/stale?/FAILED always; done ≤ 24 h; no-marker ≤ 6 h; the rest are noise (`detail` shows all; `controlroom gc --logs` archives them)
+TTL={"done":24*3600,"no-marker":6*3600,"serving":7*86400,"FAILED":7*86400,"stale?":7*86400}   # running: never aged
+shown=[r for r in rows if now-r[0]<=TTL.get(r[1],10**9)]
+hidden=len(rows)-len(shown)
+shown=shown[:30 if detail else 10]
+for mt,st,col,name,a,txt in shown:
     print(f"   {col}{st:<9}\033[0m {name:<20} {a:>5} ago  {txt}")
-if not rows: print("   (none)")
+if not shown: print("   (none)"+(f"  \033[90m· {hidden} old log(s) hidden — `controlroom gc --logs` archives them\033[0m" if hidden else ""))
+elif hidden: print(f"   \033[90m… +{hidden} aged-out log(s) hidden (done >24h · no-marker >6h · failed >7d) · controlroom gc --logs archives them\033[0m")
 PY
   printf ' EVENTS (logs/agents.log)\n'; [ -f "$LOG" ] && tail -5 "$LOG" | sed 's/^/   /' | cut -c1-140
   mem_py strip   # memory (004): one MEMORY line, omitted when docs/briefs/memory/ is absent
@@ -1458,7 +1463,14 @@ PY
     note "retired $NAME" "$REASON · resume: $SESS" none
     [ -f "$ROOT/docs/briefs/STATUS.md" ] && ! grep -q '^## Retired' "$ROOT/docs/briefs/STATUS.md" && printf '\n## Retired workers (tab closed; session resumable)\n| agent | when | reason | resume |\n|---|---|---|---|\n' >> "$ROOT/docs/briefs/STATUS.md"
     [ -f "$ROOT/docs/briefs/STATUS.md" ] && printf '| %s | %s | %s | `pi --resume %s` |\n' "$NAME" "$(date '+%m-%d %H:%M')" "$REASON" "$SESS" >> "$ROOT/docs/briefs/STATUS.md" ;;
-  gc)       # controlroom gc [--hours 24] [--apply] [--keep a,b]  — list (or retire) workers idle longer than N hours
+  gc)       # controlroom gc [--hours 24] [--apply] [--keep a,b] | gc --logs [--days 7] [--apply]  — retire idle workers | archive stale pipeline logs to logs/archive/
+    if [ "${1:-}" = "--logs" ]; then   # (015.11) pipeline logs not written for N days (default 7) → logs/archive/YYYY-MM/ (agents.log, tick.log, publish.log never)
+      shift; DAYS=7; APPLY=0; while [ $# -gt 0 ]; do case "$1" in --days) DAYS=$2; shift 2;; --apply) APPLY=1; shift;; *) shift;; esac; done
+      n=0; for f in "$ROOT"/logs/*.log; do [ -f "$f" ] || continue; b=$(basename "$f" .log); case "$b" in agents|tick|publish) continue;; esac
+        [ -n "$(find "$f" -mtime +"$DAYS" 2>/dev/null)" ] || continue; n=$((n+1))
+        if [ "$APPLY" = 1 ]; then d="$ROOT/logs/archive/$(date -r "$f" +%Y-%m)"; mkdir -p "$d"; mv "$f" "$d/"; echo "archived  $b.log → logs/archive/$(basename "$d")/"; else echo "would archive  $b.log  ($(date -r "$f" '+%m-%d'), $DAYS+ days idle)"; fi; done
+      [ "$n" = 0 ] && echo "gc --logs: nothing older than $DAYS days"; [ "$APPLY" = 1 ] || [ "$n" = 0 ] || echo "→ controlroom gc --logs --apply"; exit 0
+    fi
     HOURS=24; APPLY=0; KEEP=""
     while [ $# -gt 0 ]; do case "$1" in --hours) HOURS=$2; shift 2;; --apply) APPLY=1; shift;; --keep) KEEP=$2; shift 2;; *) shift;; esac; done
     AGENTS_JSON=$(herdr agent list 2>/dev/null) WS="$WS" HOURS="$HOURS" KEEP="$KEEP" python3 - <<'PY' > /tmp/.cr_gc
