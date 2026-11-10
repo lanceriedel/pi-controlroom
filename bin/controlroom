@@ -687,13 +687,14 @@ ws=os.environ.get("WS"); print(next((a["pane_id"] for a in json.load(sys.stdin)[
   if [ "$(uname)" != Darwin ]; then echo "tick      no launchd here — run: controlroom tick --loop (statusbar starts it on non-macOS)"; return 0; fi
   lab=$(tick_label); mkdir -p "$HOME/.config/controlroom/launchd"; PL="$HOME/.config/controlroom/launchd/$lab.plist"
   cr5 plist "$lab" > "$PL"
-  if perl -e 'alarm 10; exec @ARGV' -- launchctl print "gui/$(id -u)/$lab" >/dev/null 2>&1; then echo "tick      launchd $lab already loaded (60 s) · $PL"
-  else perl -e 'alarm 15; exec @ARGV' -- launchctl bootstrap "gui/$(id -u)" "$PL" 2>&1 && echo "tick      launchd $lab bootstrapped (60 s) · $PL"; fi
+  LA="$HOME/Library/LaunchAgents/$lab.plist"; mkdir -p "$HOME/Library/LaunchAgents"; [ -L "$LA" ] || { rm -f "$LA"; ln -s "$PL" "$LA"; }   # (015.6) launchd only auto-loads ~/Library/LaunchAgents at login — a plist bootstrapped from elsewhere dies on every reboot (11-08, 11-10: every room's tick silently gone)
+  if perl -e 'alarm 10; exec @ARGV' -- launchctl print "gui/$(id -u)/$lab" >/dev/null 2>&1; then echo "tick      launchd $lab already loaded (60 s) · $LA → $PL"
+  else perl -e 'alarm 15; exec @ARGV' -- launchctl bootstrap "gui/$(id -u)" "$LA" 2>&1 && echo "tick      launchd $lab bootstrapped (60 s, survives reboot) · $LA → $PL"; fi
 }
 tick_uninstall(){
   lab=$(tick_label); PL="$HOME/.config/controlroom/launchd/$lab.plist"
   perl -e 'alarm 15; exec @ARGV' -- launchctl bootout "gui/$(id -u)/$lab" 2>/dev/null && echo "tick      $lab booted out" || echo "tick      $lab was not loaded"
-  rm -f "$PL" && echo "          removed $PL"
+  rm -f "$PL" "$HOME/Library/LaunchAgents/$lab.plist" && echo "          removed $PL (+ LaunchAgents link)"
 }
 # ---- end 005 ----
 
