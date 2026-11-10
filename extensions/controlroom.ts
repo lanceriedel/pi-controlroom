@@ -16,6 +16,9 @@ export default function (pi: ExtensionAPI) {
 	let requested = false; // in-memory half of the rising-edge state; the file half is logs/.flush-requested
 	let manual = false; // (012) 009 bug 3: a /flush request is not cancelled by being below the threshold
 	let nudged = false; // (012) 011 #14: one nudge when a final reply (no tool calls) arrives without /compact
+	let compactAt = 0; // (015.10) circuit breaker: when we triggered a compaction and the next turn is STILL over the threshold, compaction is not reducing context (graph-search 11-10: 44 flush→/compact→compact loops at 164 %, zero `compaction` entries written) — stand down instead of looping
+	let cooldownUntil = 0;
+	const COOLDOWN_MS = 30 * 60_000;
 	let root = "";
 	let sessionFile = "";
 	const marker = () => join(root, "logs/.flush-requested"); // shared guard with the tick's shell fallback (§7.4); written by `controlroom event flush-requested`
@@ -55,6 +58,7 @@ export default function (pi: ExtensionAPI) {
 		const said = (e.message as { content?: unknown }).content;
 		if (requested && Array.isArray(said) && said.some((c) => c?.type === "text" && COMPACT_RE.test(c.text))) {
 			clear(); // (012) cleared on trigger, not on the next below-threshold turn
+			compactAt = Date.now();
 			ctx.compact({ onError: (err) => void event("ext-error", `compact: ${err.message}`) }); // the flush text ends "reply /compact" — actually run it (pi's default compaction; nothing replaced)
 			return;
 		}
@@ -62,7 +66,13 @@ export default function (pi: ExtensionAPI) {
 		if (requested && final && !nudged) { nudged = true; pi.sendUserMessage("[controlroom · flush] You said you would reply `/compact` on its own line once memory is flushed — do it now (or say why not).", { deliverAs: "followUp" }); } // (012) 011 #14: one nudge, only after a final reply without it (the 15:41 live run nudged mid-flush after 3 tool turns)
 		const pct = ctx.getContextUsage()?.percent;
 		if (pct === null || pct === undefined) return; // unknown right after compaction
-		if (pct < THRESHOLD) { if (!manual) clear(); return; } // below → re-arm (rising edge); a manual request stays pending (009 bug 3)
+		if (pct < THRESHOLD) { if (!manual) clear(); compactAt = 0; cooldownUntil = 0; return; } // below → re-arm (rising edge); a manual request stays pending (009 bug 3)
+		if (Date.now() < cooldownUntil) return; // breaker open: no more flush requests until it expires or context drops below the threshold
+		if (compactAt && Date.now() - compactAt < 10 * 60_000) { // we compacted minutes ago and are still over the line → compaction is not working here; stop asking
+			cooldownUntil = Date.now() + COOLDOWN_MS; compactAt = 0;
+			await event("ext-error", `compaction did not reduce context (still ${Math.round(pct)}%) — flush requests paused 30 min; type /compact when idle, or start a fresh session and Boot from files`);
+			return;
+		}
 		if (requested || existsSync(marker())) return; // already requested for this crossing (by us, before a restart, or by the tick fallback)
 		await flush(ctx, Math.round(pct), "followUp", "ext");
 	}));
