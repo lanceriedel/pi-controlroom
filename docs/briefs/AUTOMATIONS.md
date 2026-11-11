@@ -28,4 +28,4 @@ Kinds: `watch <agent>` (worker finished/blocked/stuck) · `play` (end a pause) �
 | A034 | wake | cancelled | 2026-11-09 08:00 | weekdays 08:00 | 1 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 11-06 08:12 · cancelled 11-08 14:30 |
 | A035 | watch status-page | fired | — | — | 1 | no | integrate 015-status-page when DONE | resume 11-08 16:16 |
 | A036 | wake | cancelled | 2026-11-09 14:30 | every 2h | 4 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h | wake 11-08 14:30 · cancelled 11-09 12:57 |
-| A037 | wake | armed | 2026-11-11 08:00 | weekdays 08:00 | 1 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 11-09 12:57 |
+| A037 | wake | armed | 2026-11-12 08:00 | weekdays 08:00 | 2 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 11-09 12:57 |
