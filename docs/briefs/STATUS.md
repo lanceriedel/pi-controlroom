@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-13 10:25 — Round A037 #4 (fired 10:24: Mac asleep; 014 re-prompt handled). Room empty, tree clean. upi-clustering-research is self-running: design doc landed, 001/002/003 results in. Waiting on Lance: pi-host inputs (017).
 - 11-12 08:03 — Round A037 #3: room empty. Done since last round: gs-controller handed off to a fresh sol session (11-11 14:58); two kumo→wC misroutes → `launch` now names the controller pane id and forbids typing into other panes. Waiting on Lance: pi-host inputs (017).
 - 11-11 08:20 — Round A037 #2: room empty. graph-search's new session compacts fine (7 real compactions, 219k→80k) but the breaker false-tripped once (first post-compaction turn still reads old usage) → dc5f0f2 judges on the 2nd turn; gs-controller needs /reload to pick it up. Memory consolidated 27 D · 30 L. Waiting on Lance: pi-host inputs (017).
 - 11-10 10:08 — **graph-search flush storm**: gs-controller at 167 % ctx (272k window), extension flush→/compact→compaction ×79 in 20 min (~$350), compaction never reduced tokens (no `compaction` entries written). Stopped it: held the flush marker, Esc, killed pid 9046, fresh `gs-controller` session booting from files (16 % ctx). Extension now has a 30-min breaker (27933ca). Open: why pi compaction fails at that size; a hard ceiling (ctx ≥ 120 % ⇒ stop prompting, toast 'start a fresh session').
