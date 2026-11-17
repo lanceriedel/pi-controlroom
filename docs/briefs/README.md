@@ -10,6 +10,8 @@ Newest first; the last 8 are shown, older briefs are folded below.
 
 | Brief | Stream | Needs external resources? |
 |---|---|---|
+| [019-judge](019-judge.md) | LLM completion gate at land: grade result vs brief with quoted evidence; `must:` requirements block; after 018 | pi -p (cheap model) |
+| [018-acceptance-checks](018-acceptance-checks.md) | `## Acceptance` blocks + `writes:` scope + mandatory Deviations + re-anchor prompt + steer ACKs; `check`, `land` enforces | no |
 | [015-status-page](015-status-page.md) | `controlroom status-page [--publish]`: project page from STATUS/health with brief links → GitHub Pages + publishers.sh; auto after launch/land | gh API (Pages) |
 | [014-prompt-uptake](014-prompt-uptake.md) | Tick detects error-aborted controller turns after a prompt and re-prompts; defer prompts right after machine wake | no |
 | [013-tobi-comparison](013-tobi-comparison.md) | Lance-facing doc: pi-controlroom 0.2.0 vs Tobi's harness — features, pros/cons, proven vs on paper | no |
