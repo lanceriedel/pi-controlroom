@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-17 09:25 — New room **taste-id-research** set up like graph-search: private repo shopify-playground/taste-id-research; local Herdr wH `ti-controller` (fable, init done, MODE line, hosts line); dev002 clone + Herdr w4 `ti-remote` (fable, init done, tick pane w4:p3, strip w4:p2); status flags/publishers copied. Waiting on Lance: goal + first briefs.
 - 11-17 08:30 — Round A037 #6: room empty. Still waiting on Lance: pi-host inputs (017); YubiKey for signing commits.
 - 11-16 08:55 — Round A037 #5 (Mon). Room empty, tree clean. Weekend: machines down 53 h (laptop closed), all four controllers alive on fable. Waiting on Lance: pi-host inputs (017).
 - 11-13 10:50 — Lance: **fable for all controllers**. gs/kumo/upi controllers handed off (handoff.md each, old sessions kept) to fresh claude-fable-5-1 sessions; pi default model → anthropic/claude-fable-5-1 (D028). Workers unchanged (per brief).
