@@ -40,7 +40,11 @@ database, no new daemons. Installed in one line; a room is created by typing `/c
 
 ## What happens when the laptop closes
 
-The honest answer has two halves, because there are two kinds of state.
+**Short answer: hand the room to the VM first and nothing stops.** One sentence to the laptop controller —
+*"controller mode: remote"* — commits the board, marks `MODE: remote`, and stops local launching; the VM's controller
+pulls and becomes primary: it runs the rounds, launches and lands briefs, keeps the status page current, and queues
+anything that needs your identity under *Pending publish (local)*. In the morning, *"controller mode: local"* hands it
+back with a written `HANDOFF` block. Below is why that works — there are two kinds of state.
 
 **State that is already safe (any room, any host):** the board, briefs, results, memory, automations ledger — all
 files, all in git. A controller or worker killed mid-sentence loses only its chat; a fresh agent re-reads the files
@@ -59,8 +63,6 @@ used on graph-search and taste-id-research:
 | Runs | anything needing the human's identity: browser/SSO tools, publishing, Drive, chat | long jobs, pipelines (as the VM's service account), files-only research, evals |
 | Survives lid-close? | No — it pauses | **Yes** — workers, tick, strip, and the remote controller keep going |
 | Hand-off | **git**: results and board commits flow both ways; `host:` in each brief header says who owns it | same |
-
-**Moving the primary to the VM** is one sentence to the laptop controller — *"controller mode: remote"* — it commits, writes `MODE: remote` on the board and stops launching; the VM controller pulls and becomes primary (rounds, launches, landing, the status page), queuing anything that needs your identity under *Pending publish (local)*. *"controller mode: local"* hands it back with a written `HANDOFF` block.
 
 What this means in practice: close the laptop at 6 pm with three VM workers running; at 8 am the VM room has landed
 their results, updated the board, committed and pushed; the laptop room pulls, the strip shows what's new, and the
