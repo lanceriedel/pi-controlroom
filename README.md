@@ -41,7 +41,7 @@ herdr integration install pi && herdr integration status      # pi must show as 
 ```bash
 pi install git:github.com/lanceriedel/pi-controlroom
 P=~/.pi/agent/git/github.com/lanceriedel/pi-controlroom
-mkdir -p ~/.local/bin && ln -sf "$P/bin/controlroom" "$P/bin/controlroom-pager" "$P/bin/controlroom-md2html" "$P/bin/controlroom-pages" ~/.local/bin/
+mkdir -p ~/.local/bin && ln -sf "$P/bin/controlroom" "$P/bin/controlroom-pager" "$P/bin/controlroom-md2html" "$P/bin/controlroom-pages" "$P/bin/controlroom-check-lib" ~/.local/bin/
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc; echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc;; esac
 controlroom 2>&1 | head -3     # prints usage → installed
 ```
@@ -91,6 +91,21 @@ A work packet: one Markdown file, `docs/briefs/NNN-slug.md` (zero-padded, chrono
 | **Where to write** | `docs/briefs/results/NNN-slug.md` — and the sentinel `DONE NNN` |
 
 `docs/briefs/README.md` lists every brief with a one-line purpose and what external resources it needs.
+
+#### Acceptance (018) — a brief is a contract, checked at land time
+Two optional pieces make a brief **enforceable** without a model call: a header line `writes: <glob>[, <glob>…]` (the only paths the worker may create or modify — its result file, `logs/**`, the board/ledger/memory and `docs/status/**` are always implied) and a `## Acceptance` section holding a fenced ```` ```sh ```` block, one independent command per line, exit 0 = pass. Checks run in a subshell with `ROOT` `BRIEF` `RESULT` `NUM` set and these helpers on hand (`bin/controlroom-check-lib`): `cr_has_section <file> "## Proof"` · `cr_has_sentinel <file> NNN` · `cr_max_lines <file> N` · `cr_grep <file> <regex>` · `cr_unchanged <path>…`. An optional `read-only: <path>[, …]` header names files the worker must not touch.
+
+```sh
+## Acceptance
+cr_has_section "$RESULT" "## Proof"
+cr_has_sentinel "$RESULT" 018
+bash -n "$ROOT/bin/controlroom"
+```
+`writes: bin/**, README.md, docs/briefs/results/018*`
+
+**`controlroom check <NNN|brief.md|agent> [--json]`** runs the block, then the **default checks** every brief gets (result file exists · contains `DONE NNN` · has a `## Deviations` section — *mandatory; write `none` if there were none* · every `read-only:` path unchanged in `git status`), then **write-scope** (`git status --porcelain` incl. untracked, minus the allowed globs → `FAIL  write-scope: <paths>`). One line per check — `PASS|FAIL  <check> — <first line of stderr>` — exit 0 all pass · 1 any fail · 2 brief not found; each check is time-boxed to 60 s. **`controlroom land` runs it**: a `done` row whose check fails stays on the board as `done — acceptance failed (N): <first failing check>` (one toast + `agents.log` line per transition); `land --force` lands it anyway and writes `(accepted with failures: …)` into the Landed one-liner so the board says why. Briefs with no block get the default checks only. The strip shows `✓ acceptance` / `✗ acceptance (N)` on a worker's row once its result file exists (the tick re-runs `check` when the result's mtime changes, cached in `logs/.health.json`). The launch prompt tells every worker about `## Deviations`, `writes:` and `DONE NNN`, and to **re-read its brief after any compaction** — so a steer or constraint lost to a context reset is a declared deviation, not a silent one.
+
+**Steering a running worker.** `controlroom steer <agent> "<text>"` wraps `herdr agent prompt` and appends `— reply ACK S### on its own line when you have read this`; the tick looks for that line in the worker's pane and toasts once (`steer S### to <agent> not acknowledged (agent was working)`) if it is missing after 10 min. Steering an agent that already printed `DONE` logs `steer after DONE — re-launch or resume` immediately — the prompt is still delivered (warm workers accept follow-ups) but the board can't miss that it happened after the fact.
 
 ### Result
 The worker's answer: `docs/briefs/results/<same-name>.md`. Workers are told to save partial results early and append — so if a worker dies (network, laptop sleep, timeout) the work so far is on disk.
@@ -338,7 +353,9 @@ back → verified on the laptop — took about **65 s**.
 | `controlroom lesson "…" --from <source> [--slug s]` | same, `L###` → `LESSONS.md` |
 | `controlroom supersede <ID> <byID>` | strike a line in place, note `superseded-by`, copy it to `memory/archive/YYYY-MM.md` |
 | `controlroom memory [--counts\|--decisions\|--lessons\|--unsourced]` | counts + active lines of both files (≤ 70 lines); `⚠ over budget` past 40/30 |
-| `controlroom land [<agent\|brief>…]` | move `done` rows with a result link from the workers table into `## Landed`; drop struck decisions from the board |
+| `controlroom land [<agent\|brief>…] [--force]` | run `check` for each `done` row with a result link; pass → move it into `## Landed`; fail → the row stays as `done — acceptance failed (N): …` (toast + log once); `--force` lands with `(accepted with failures: …)` in the one-liner; drop struck decisions from the board (018) |
+| `controlroom check <NNN\|brief.md\|agent> [--json]` | the brief's `## Acceptance` block + default checks (result · `DONE NNN` · `## Deviations` · `read-only:` unchanged) + write-scope (`writes:` globs vs `git status`); `PASS\|FAIL  <check> — <why>` per line; exit 0 / 1 / 2 (no brief); helpers in `bin/controlroom-check-lib` (018) |
+| `controlroom steer <agent> "<text>"` | `herdr agent prompt` + `reply ACK S###`; the tick toasts once if the pane shows no ACK within 10 min; a `done` target logs `steer after DONE` (018) |
 | `controlroom init --memory-only [--no-seed]` | just the `docs/briefs/memory/` scaffold + LESSONS seed (idempotent; no pane/agent changes) |
 | `controlroom dream [--reason r] [--since ISO\|Nd] [--here]` | render `prompts/dream.md` → `memory/.dream-brief.md` (window = `--since`, else last `dreams/*.md` mtime, else 7 d) and `launch` a `dreamer-N` worker (watch row + LESSONS line as usual); `--here` prints the filled prompt for the controller to run itself |
 | `controlroom dream --check` | no LLM: newest `dreams/*.md` + `proposed.md` — every `← path[#anchor\|:"phrase"\|:line]` resolves, `DONE dream` present, `## Proposed (N)` = P-lines added, no duplicate slug, ≤ 10; warns if DECISIONS/LESSONS/STATUS/results moved during the run → `dream ok: …` in `agents.log`, or a list + toast `dream report has dead links` (rc 1) |

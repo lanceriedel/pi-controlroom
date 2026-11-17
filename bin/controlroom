@@ -22,6 +22,8 @@
 #   <agent> may be `<machine>/<agent>` (a saved `herdr machine`) for verify · lastline · resume · watch — translated to `herdr --machine <machine>` (015)
 #   controlroom status-page [--publish] [--snapshot] [--cost] [--quiet]   (015) docs/status/latest.{md,html} from STATUS.md + health + docs/status/preamble.md (yours); --publish → commit docs/status/** · GitHub Pages (enables it) · docs/status/publishers.sh · logs/publish.log. launch/land call it (opt-out: D-line slug status-page-off or CONTROLROOM_STATUS_PAGE=0)
 #   controlroom cancel --prune-fired    (012) drop fired/cancelled one-shot rows from AUTOMATIONS.md (ids never reused) · touch logs/AUTOPROMPT-OFF = per-room kill switch (tick + strip)
+#   controlroom check <NNN|brief|agent> [--json]   (018) run the brief's `## Acceptance` ```sh block + default checks (result · DONE NNN · ## Deviations · read-only: unchanged) + write-scope (`writes:` globs vs git status); exit 0 pass · 1 fail · 2 no brief. `land` refuses failing rows (`land --force` lands with a note)
+#   controlroom steer <agent> "<text>"   (018) prompt a working agent and demand `ACK S###`; the tick toasts once if the ACK is missing after 10 min; steering a `done` agent logs `steer after DONE`
 set -u
 CMD=${1:-help}; shift || true
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -319,6 +321,25 @@ def uptake(st,dry,acts):   # (014) L039: for every prompt we sent, scan the cont
         sent.get(rid,s).update(text=s["text"],retried=n+1,toasted=s.get("toasted"),last=now); acts.append(f"{rid} turn aborted ({why}) → re-prompted"+(f" (retry {n+1})" if n else ""))
         if not dry: open(os.path.join(LOGS,"agents.log"),"a").write(f"[{stamp()}] {rid} turn aborted ({why}) → re-prompted\n")
 # ---- end 006 helpers (tick steps 5–6 and the CLI arms are marked (006) below) ----
+# ---- acceptance (018) ----  steer ACKs (st["steers"]) + the per-agent `check` cache (cache["acceptance"], re-run only when the result file's mtime changes); the strip reads both
+def steer_step(st,dry,acts):   # every open steer: pane tail shows `ACK S###` on its own line → acked; > 10 min without → toast + agents.log once; forgotten after 60 min
+    for sid,s in list(st.get("steers",{}).items()):
+        if re.search(r"^[\s●•>*-]*ACK\s+%s\s*$"%sid,sh(["herdr","agent","read",s["agent"],"--source","visible","--lines","200","--format","text"],10),re.M):
+            st["steers"].pop(sid); acts.append(f"steer {sid} acked by {s['agent']}"); dry or open(os.path.join(LOGS,"agents.log"),"a").write(f"[{stamp()}] steer {sid} acked by {s['agent']}\n"); continue
+        if now-s["ts"]>600 and not s.get("toasted"):
+            dry or lib("note",f"steer {sid} to {s['agent']} not acknowledged (agent was {s['status']})",f"herdr agent read {s['agent']} · controlroom resume {s['agent']} or steer again","request"); s["toasted"]=True; acts.append(f"steer {sid} to {s['agent']} not acknowledged (agent was {s['status']})")
+        if now-s["ts"]>3600: st["steers"].pop(sid)
+def accept_step(brd,cache,dry,acts):   # one `check --json` per pass at most: board rows whose newest results/NNN-*.md mtime differs from the cached one
+    ac=cache.setdefault("acceptance",{})
+    for n,b in brd.items():
+        m=re.search(r"\d{3}",b["brief"]); rs=glob.glob(os.path.join(BR,"results",m.group(0)+"-*.md")) if m else []
+        if not rs: ac.pop(n,None); continue
+        mt=max(map(os.path.getmtime,rs))
+        if ac.get(n,{}).get("mtime")==mt: continue
+        try: j=json.loads(sh([SELF,"check",m.group(0),"--json"],150))
+        except Exception: continue
+        ac[n]=dict(mtime=mt,ok=j["ok"],fail=j["fail"],first=(j["fails"] or [""])[0],ts=now); acts.append(f"acceptance {n} ({m.group(0)}): "+("ok" if j["ok"] else f"{j['fail']} failing — {ac[n]['first']}")); break
+# ---- end 018 helpers ----
 # ---- compaction (008) ----  §7.4 shell fallback for the controller when extensions/controlroom.ts is absent, + `controlroom event`. Shared guard: logs/.flush-requested
 FLUSH_PCT=int(os.environ.get("CONTROLROOM_FLUSH_PCT",75)); FLUSHED=os.path.join(LOGS,".flush-requested"); ALIVE=os.path.join(LOGS,".ext-alive"); COMPS=os.path.join(LOGS,".compactions")
 FLUSH_TEXT="[controlroom · flush] Context at %d%% (threshold %d%%). Before compaction: run `controlroom memory`, then record every decision/lesson from this session that is not yet there (controlroom decide|lesson --from <file>), update STATUS.md, note your next wake. Then reply `/compact`."
@@ -477,6 +498,7 @@ def tick_pass(dry):
             advance(r)
         if held: acts.append(f"play: {len(held)} held row(s) fired — "+", ".join(r["id"] for r in held)+(f" · {len(yes)} collapsed into one controller prompt" if yes and res=="ok" else f" · toast ({res})"))
     ags=agents(); brd=board(); comp_step(rows,st,cache,dry,acts,changed)   # (008) step 7: may add flush / post-compaction rows that step 5 fires below
+    steer_step(st,dry,acts); accept_step(brd,cache,dry,acts)   # (018) steer ACKs · acceptance cache for the strip
     woke=just_woke(); dfr=st.get("deferred",0); capped=woke and dfr>=3; woke and not capped or uptake(st,dry,acts)   # (014) step 5a: did the last prompts actually run? (skipped right after wake — the retry would hit the same dead window — unless the deferral cap is hit)
     if not woke: st["deferred"]=0
     for r in rows:   # step 3
@@ -679,6 +701,17 @@ elif cmd=="plist":   # launchd unit for the tick (§2.6); env verified by spike 
 <key>StandardOutPath</key><string>{ROOT}/logs/tick.log</string>
 <key>StandardErrorPath</key><string>{ROOT}/logs/tick.log</string>
 </dict></plist>''')
+elif cmd=="steer":   # (018) steer <agent> "<text>" → herdr agent prompt + ` — reply ACK S### …`; st["steers"][id]; a `done` agent gets the prompt too but logs `steer after DONE`
+    len(args)>=2 or die('usage: controlroom steer <agent> "<text>"'); agent,text=args[0]," ".join(args[1:]); a=agents().get(agent) or die(f"no agent {agent!r} in this workspace (herdr agent list)")
+    status=a["agent_status"] if a["agent_status"] in ("working","blocked") else lib("verify",agent) or a["agent_status"]
+    lock(); st=load_state(); st["steer_n"]=st.get("steer_n",0)+1; sid="S%03d"%st["steer_n"]
+    r=subprocess.run(["herdr","agent","prompt",agent,f"{text} — reply ACK {sid} on its own line when you have read this"],capture_output=True,text=True,timeout=20)
+    r.returncode==0 and "agent_blocked" not in r.stdout+r.stderr or die(f"herdr agent prompt failed: {(r.stderr or r.stdout).strip()[:160]}")
+    st.setdefault("steers",{})[sid]={"agent":agent,"ts":now,"status":status}; save_state()
+    with open(os.path.join(LOGS,"agents.log"),"a") as f:
+        f.write(f"[{stamp()}] steer {sid} → {agent} (was {status}): {text[:100]}\n")
+        if status=="done": f.write(f"[{stamp()}] steer {sid} after DONE — {agent} already printed DONE; re-launch or resume ({text[:60]})\n"); print(f"⚠ {agent} was done — steer after DONE: re-launch or `controlroom resume {agent}` if you need it to work again")
+    print(f"{sid} → {agent} (was {status}) · the tick toasts if no `ACK {sid}` appears in its pane within 10 min")
 elif cmd=="event":   # (008) controlroom event <kind> [arg] — see event() above
     if not args: die("usage: controlroom event <flush-requested <pct> | compaction <tokensBefore> | ext-error <msg> | …> [arg]")
     event(args[0],args[1] if len(args)>1 else "",args[2] if len(args)>2 else "ext")   # (012) 3rd arg = source (ext | manual | tick)
@@ -706,9 +739,9 @@ tick_uninstall(){
 
 # ---- memory (004) ----  docs/briefs/memory/{DECISIONS,LESSONS}.md — append-only, every line `- D### date **slug** — text ← source`
 # mem_py <decide|lesson|supersede|memory|land|init|strip> [args…]; data via argv/env (stdin is the heredoc). Design: docs/design/durable-controlroom.md §1, §5.
-mem_py(){ ROOT="$ROOT" python3 - "$@" <<'PY'
-import os,re,sys,glob,time,datetime
-root=os.environ["ROOT"]; mem=os.path.join(root,"docs/briefs/memory"); today=datetime.date.today().isoformat()
+mem_py(){ ROOT="$ROOT" SELF="$0" python3 - "$@" <<'PY'
+import os,re,sys,glob,time,datetime,json,subprocess
+root=os.environ["ROOT"]; SELF=os.environ["SELF"]; mem=os.path.join(root,"docs/briefs/memory"); today=datetime.date.today().isoformat()
 cmd,args=sys.argv[1],sys.argv[2:]; FILE={"D":"DECISIONS.md","L":"LESSONS.md"}; BUDGET={"D":40,"L":30}
 def die(m): print(m,file=sys.stderr); sys.exit(1)
 def path(k): return os.path.join(mem,FILE[k])
@@ -797,19 +830,34 @@ elif cmd=="init":
 elif cmd=="land":
     sp=os.path.join(root,"docs/briefs/STATUS.md")
     if not os.path.exists(sp): die("no docs/briefs/STATUS.md")
-    src=open(sp).read().splitlines(); out,moved,dropped,sec,i,filt=[],[],[],"",0,set(args)
+    src=open(sp).read().splitlines(); out,moved,dropped,sec,i,filt=[],[],[],"",0,set(a for a in args if not a.startswith("--")); force="--force" in args
     while i<len(src):
         l=src[i]
         if l.startswith("## "): sec=l[3:].strip().lower()
         if sec.startswith("workers") and l.startswith("|"):
             c=[x.strip() for x in l.strip().strip("|").split("|")]
-            if len(c)>=5 and c[3].lower().startswith("done") and "](" in c[4] and (not filt or filt&{c[1],c[2]}): moved.append(c); i+=1; continue
+            if len(c)>=5 and c[3].lower().startswith("done") and "](" in c[4] and (not filt or filt&{c[1],c[2]}): moved.append(c); out.append(c); i+=1; continue   # (018) placeholder: dropped when landed, rewritten when acceptance fails
         if sec.startswith("decisions waiting") and re.match(r"^\d+\.\s*~~",l):
             j=i+1
             while j<len(src) and src[j].strip() and not re.match(r"^\d+\.",src[j]) and not src[j].startswith("## "): j+=1
             dropped.append(" ".join(x.strip() for x in src[i:j])); i=j; continue
         out.append(l); i+=1
     if not moved and not dropped: print("land: nothing to move (no `done` rows with a result link, no struck decisions)"); sys.exit()
+    kept=[]   # (018) acceptance gate: `controlroom check <brief>` per row; FAIL → row stays with state `done — acceptance failed (N): <first>` (+ one toast/log per transition); --force lands with `(accepted with failures: …)`
+    for c in list(moved):
+        num=re.search(r"\d{3}",c[2]); num=num.group(0) if num else c[2]
+        r=None
+        try: r=subprocess.run([SELF,"check",num,"--json"],capture_output=True,text=True,timeout=600,cwd=root,env=dict(os.environ,ROOT=root)); j=json.loads(r.stdout)
+        except Exception as e: j={"ok":False,"fails":[f"check {num} produced no verdict ({type(e).__name__})"],"fail":1}
+        if j.get("ok") or (r is not None and r.returncode==2): continue   # pass, or no brief file for this row (pre-018 rows) → lands as before
+        first=(j.get("fails") or ["?"])[0]; summary="; ".join(j.get("fails") or [])
+        if force: c[4]=c[4].rstrip()+f" (accepted with failures: {summary})"; print(f"⚠ {c[1]:<18} {c[2]}  forced — {j.get('fail')} failing: {summary}"); continue
+        moved.remove(c); fresh=not c[3].startswith("done — acceptance failed"); c[3]=f"done — acceptance failed ({j.get('fail')}): {first}"[:160]; kept.append(c)
+        print(f"refused {c[1]:<18} {c[2]}  acceptance failed ({j.get('fail')}): {summary}\n        row → `{c[3]}` · controlroom check {num} · land --force to accept")
+        if fresh: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",f"acceptance failed {c[1]}: {first}",f"{j.get('fail')} failing · controlroom check {num} · land --force to accept","request"],env=dict(os.environ,ROOT=root),timeout=20)
+    out=[("| "+" | ".join(c)+" |" if c in kept else None) if isinstance(c,list) else c for c in out]; out=[l for l in out if l is not None]
+    if not moved and not dropped:
+        tmp=sp+".tmp"; open(tmp,"w").write("\n".join(out)+"\n"); os.replace(tmp,sp); sys.exit(1)   # board shows the failure; nothing landed
     n=0; sec=""
     for k,l in enumerate(out):   # renumber the remaining decisions
         if l.startswith("## "): sec=l[3:].lower(); n=0
@@ -830,6 +878,7 @@ elif cmd=="land":
         with open(os.path.join(mem,"archive",today[:7]+".md"),"a") as f: f.write("".join(f"- board {today} (dropped by land): {d}\n" for d in dropped))
     for c in moved: print(f"landed  {c[1]:<18} {c[2]}  ({c[3]})")
     for d in dropped: print(f"dropped decided: {d[:120]}")
+    kept and sys.exit(1)   # (018)
 else: die(f"mem_py: unknown {cmd}")
 PY
 }
@@ -1075,8 +1124,8 @@ elif cmd in ("header","agents"):
             cells=[x.strip() for x in line.strip().strip("|").split("|")]
             if len(cells)>=3 and cells[1] and cells[1] not in ("agent","---"): tasks[cells[1]]=cells[2]
     except Exception: pass
-    try: H=json.load(open(os.path.join(LOGS,".health.json"))).get("agents",{})   # written by `controlroom tick` / `health` (005)
-    except Exception: H={}
+    try: HJ=json.load(open(os.path.join(LOGS,".health.json"))); H=HJ.get("agents",{}); AC=HJ.get("acceptance",{})   # written by `controlroom tick` / `health` (005) · (018) acceptance cache per agent
+    except Exception: H={}; AC={}
     def lastline(n):
         try: return subprocess.run([SELF,"lastline",n],capture_output=True,text=True,timeout=5).stdout.strip()
         except Exception: return ""
@@ -1102,6 +1151,7 @@ elif cmd in ("header","agents"):
             except Exception: v=""
             st={"done":"done","crashed":"crashed","stalled":"stalled"}.get(v,st)
         ex=(f"   {DIM}{tasks.get(n,'')[:90]}{OFF}" if detail and tasks.get(n) else "")+(f"   {DIM}last write {h['last_write']} · ctx {h.get('ctx_pct','?')}%{OFF}" if detail and h.get("last_write") else "")
+        ac=AC.get(n); ex+=(f"   {GRN}✓ acceptance{OFF}" if ac["ok"] else f"   {RED}✗ acceptance ({ac['fail']}){OFF}"+(f" {DIM}{ac.get('first','')[:60]}{OFF}" if detail else "")) if ac else ""   # (018) once a result file exists (tick: `check` cached by result mtime)
         rows.append(dict(st=st,n=n,pane=a["pane_id"],ctl=lctl(a),prim=lctl(a) and primary=="local",extra=ex,ll=lastline(n) if detail and st in ("working","stuck?","spinning?") else ""))
     render("local" if ms else "",rows)
     if not local and not ms: print("   (no agents in this workspace)")
@@ -1320,6 +1370,68 @@ sp_hook(){   # (015) after launch/land: republish in the background, 60 s alarm,
 }
 # ---- end status page ----
 
+# ---- acceptance (018) ----  `controlroom check <brief|agent> [--json]`: a brief's `## Acceptance` ```sh block (one command per line, exit 0 = pass; helpers from bin/controlroom-check-lib),
+# default checks (result exists · `DONE NNN` · `## Deviations` · `read-only:` paths unchanged) and write-scope (`writes:` globs vs `git status --porcelain`). `land` runs it; the tick caches it per agent in .health.json.
+check_py(){ ROOT="$ROOT" SELF="$0" python3 - "$@" <<'PY'
+import os,re,sys,glob,json,subprocess,shutil
+ROOT=os.environ["ROOT"]; SELF=os.path.realpath(os.environ["SELF"]); BR=os.path.join(ROOT,"docs/briefs"); args=sys.argv[1:]; js="--json" in args; pos=[a for a in args if not a.startswith("--")]
+USAGE="usage: controlroom check <NNN | brief.md | agent> [--json]   exit 0 all pass · 1 any fail · 2 brief not found\n  runs the brief's ## Acceptance ```sh block (env ROOT BRIEF RESULT NUM; helpers cr_has_section cr_has_sentinel cr_max_lines cr_grep cr_unchanged), the default checks and write-scope (writes: globs)"
+if "--help" in args or not pos: print(USAGE); sys.exit(0 if "--help" in args else 2)
+def board():   # STATUS.md Workers table by header (L045) → {agent: brief}
+    out={}; sec=""; hdr=None
+    try:
+        for l in open(os.path.join(BR,"STATUS.md")):
+            if l.startswith("## "): sec=l[3:].strip().lower(); hdr=None
+            if not (sec.startswith("workers") and l.startswith("|")) or set(l.strip())<=set("|-: "): continue
+            c=[x.strip() for x in l.strip().strip("|").split("|")]
+            if hdr is None: hdr=[x.lower() for x in c]; continue
+            d=dict(zip(hdr,c)); d.get("agent") and out.__setitem__(d["agent"],d.get("brief",""))
+    except Exception: pass
+    return out
+k=pos[0]; m=re.search(r"(\d{3})",k if not os.path.isfile(k) else os.path.basename(k)) or re.search(r"(\d{3})",board().get(k,""))
+BRIEF=os.path.abspath(k) if os.path.isfile(k) else (sorted(glob.glob(os.path.join(BR,m.group(1)+"-*.md")))+[None])[0] if m else None
+if not BRIEF: print(f"check: brief not found for {k!r} (number, docs/briefs/NNN-*.md path, or an agent on the board)",file=sys.stderr); sys.exit(2)
+NUM=(re.match(r"(\d{3})",os.path.basename(BRIEF)) or [None,""])[1]; agent=next((a for a,b in board().items() if NUM and NUM in b),None)
+RES=sorted(glob.glob(os.path.join(BR,"results",NUM+"-*.md")) if NUM else []); RESULT=RES[0] if RES else os.path.join(BR,"results",os.path.basename(BRIEF))
+txt=open(BRIEF,errors="replace").read(); nof=re.sub(r"^```.*?^```[^\n]*$","",txt,flags=re.M|re.S)
+hdr=lambda key: [x.strip().strip("`") for x in re.split(r"\s*,\s*",(re.search(r"^%s:\s*(.+)$"%key,nof,re.M) or [None,""])[1].strip()) if x.strip()]
+WRITES,RO=hdr("writes"),hdr("read-only")
+sec=(re.search(r"^## Acceptance[^\n]*\n(.*?)(?=^## |\Z)",txt,re.M|re.S) or [None,""])[1]; blk=(re.search(r"^```(?:sh|bash)?[^\n]*\n(.*?)^```",sec,re.M|re.S) or [None,""])[1]
+checks=[l.strip() for l in blk.splitlines() if l.strip() and not l.strip().startswith("#")]
+LIB=next((p for p in (os.path.join(os.path.dirname(SELF),"controlroom-check-lib"),shutil.which("controlroom-check-lib") or "") if p and os.path.exists(p)),"")
+ENV=dict(os.environ,ROOT=ROOT,BRIEF=BRIEF,RESULT=RESULT,NUM=NUM,CR_LIB=LIB,PATH=(os.path.dirname(LIB)+":" if LIB else "")+os.environ.get("PATH",""))
+rows=[]   # (name, ok, msg)
+def add(name,ok,msg=""): rows.append((name,bool(ok),"" if ok or not (msg or "").strip() else msg.strip().splitlines()[0][:160]))   # msg = the reason, shown on FAIL only
+def run(line):
+    try: r=subprocess.run(["bash","-c",('source "$CR_LIB" 2>/dev/null; ' if LIB else "")+line],cwd=ROOT,env=ENV,capture_output=True,text=True,timeout=60); add(line,r.returncode==0,r.stderr or (f"exit {r.returncode}" if r.returncode else ""))
+    except subprocess.TimeoutExpired: add(line,False,"timed out (60 s)")
+for c in checks: run(c)
+rel=os.path.relpath(RESULT,ROOT); ex=os.path.exists(RESULT); rt=open(RESULT,errors="replace").read() if ex else ""
+add("default: result file exists",ex,"" if ex else f"no {rel}")
+add(f"default: `DONE {NUM}` in result",re.search(r"^\s*DONE\s+%s(?![0-9A-Za-z])"%NUM,rt,re.M),f"no `DONE {NUM}` line in {rel}" if ex else "no result file")
+add("default: `## Deviations` section in result",re.search(r"^#+\s+Deviations\b",rt,re.M|re.I),f"no `## Deviations` heading in {rel} (write `none` if there were none)" if ex else "no result file")
+def gs():   # git status --porcelain paths (staged + unstaged + untracked), repo-relative
+    try: o=subprocess.run(["git","-C",ROOT,"status","--porcelain","--untracked-files=all"],capture_output=True,text=True,timeout=30).stdout
+    except Exception: return []
+    return sorted({(l[3:].split(" -> ")[-1]).strip().strip('"') for l in o.splitlines() if len(l)>3})
+DIRTY=gs()
+for p in RO: bad=[d for d in DIRTY if d==p.rstrip("/") or d.startswith(p.rstrip("/")+"/")]; add(f"default: read-only {p} unchanged",not bad,"changed: "+" ".join(bad) if bad else "")
+def rx(g): g=g.strip("/") if g.endswith("/") else g; g=re.escape(g).replace(r"\*\*/","(.*/)?").replace(r"\*\*",".*").replace(r"\*","[^/]*").replace(r"\?","[^/]"); return re.compile("^"+g+"(/.*)?$")
+if WRITES:   # write-scope: dirty paths outside writes: ∪ implicit (results/NNN*, the result, logs/**, the board/ledger/memory/status page the controller and the CLI write)
+    allow=[rx(g) for g in WRITES+[f"docs/briefs/results/{NUM}*",os.path.relpath(RESULT,ROOT),"logs/**","docs/briefs/STATUS.md","docs/briefs/AUTOMATIONS.md","docs/briefs/memory/**","docs/status/**"]]
+    out=[d for d in DIRTY if not any(a.match(d) for a in allow)]
+    add("write-scope: "+" ".join(out) if out else f"write-scope (writes: {', '.join(WRITES)})",not out,f"{len(out)} path(s) in git status outside writes: {', '.join(WRITES)}")
+else: rows.append(("write-scope",None,"no writes: header in the brief — not enforced"))
+fails=[n for n,ok,_ in rows if ok is False]; ok=not fails
+if js: print(json.dumps(dict(brief=os.path.relpath(BRIEF,ROOT),result=rel,num=NUM,agent=agent,writes=WRITES,read_only=RO,checks=[dict(check=n,status={True:"PASS",False:"FAIL",None:"SKIP"}[o],msg=m) for n,o,m in rows],n_pass=sum(o is True for _,o,_ in rows),fail=len(fails),fails=fails,ok=ok)))
+else:
+    for n,o,m in rows: print(f"{ {True:'PASS',False:'FAIL',None:'SKIP'}[o]}  {n}"+(f" — {m}" if m else ""))
+    print(f"{'ok' if ok else 'FAILED'}: {sum(o is True for _,o,_ in rows)} pass · {len(fails)} fail · brief {os.path.relpath(BRIEF,ROOT)} · result {rel}"+(f" · agent {agent}" if agent else "")+("" if checks else " · (no ## Acceptance block: default checks only)"))
+sys.exit(0 if ok else 1)
+PY
+}
+# ---- end acceptance ----
+
 case "$CMD" in
   __lib__) return 0 2>/dev/null || exit 0 ;;   # sourced for verify()
   verify) [ -n "${1:-}" ] || { echo "usage: controlroom verify <agent>"; exit 2; }; verify "$1" ;;   # (012) 011 #16
@@ -1388,7 +1500,8 @@ print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status" and str
     herdr agent start "$NAME" --kind pi --pane "$pane" --timeout 60000 >/dev/null 2>&1 || { echo "agent start failed in $pane"; exit 1; }
     sleep 2
     PRE="Read"; [ -f "$ROOT/docs/briefs/memory/LESSONS.md" ] && PRE="Read docs/briefs/memory/LESSONS.md first (project lessons; treat as rules). Then read"   # memory (004)
-    herdr agent prompt "$NAME" "$PRE $BRIEF and execute it end to end. Work autonomously; do not ask questions unless truly blocked. Save deliverables where the brief specifies and write the final summary to docs/briefs/results/ as the brief says. Save partial results early and often. When done, reply with the single line: DONE $NAME — in your own pane only; never type into another pane or tab (this room's controller is pane $(cat "$ROOT/logs/.controller" 2>/dev/null || echo "$HERDR_PANE_ID") · \`herdr agent prompt $(cat "$ROOT/logs/.controller" 2>/dev/null || echo "$HERDR_PANE_ID") …\` only if the brief says so; CONTROLLER tabs in other workspaces are other rooms)." >/dev/null 2>&1
+    NUM=$(basename "$BRIEF" | sed -n 's/^\([0-9]\{3\}\).*/\1/p'); NUM=${NUM:-NNN}   # (018) the result's sentinel is `DONE NNN`; `controlroom check` is the contract
+    herdr agent prompt "$NAME" "$PRE $BRIEF and execute it end to end. Work autonomously; do not ask questions unless truly blocked. Save deliverables where the brief specifies and write the final summary to docs/briefs/results/ as the brief says; that result file must contain a \`## Deviations\` section (what you did differently from the brief and why, or \`none\`) and end with the line \`DONE $NUM\`, and you may only create or modify paths the brief's \`writes:\` line allows (plus your result file and logs/) — \`controlroom check $NUM\` is run against it before the work lands. Save partial results early and often. After any compaction or context reset, re-read your brief before continuing. When done, reply with the single line: DONE $NAME — in your own pane only; never type into another pane or tab (this room's controller is pane $(cat "$ROOT/logs/.controller" 2>/dev/null || echo "$HERDR_PANE_ID") · \`herdr agent prompt $(cat "$ROOT/logs/.controller" 2>/dev/null || echo "$HERDR_PANE_ID") …\` only if the brief says so; CONTROLLER tabs in other workspaces are other rooms)." >/dev/null 2>&1
     row=$(cr5 auto arm "$NAME" "integrate $(basename "$BRIEF" .md) when DONE" "launch $(date '+%m-%d %H:%M')")   # (005) watch row; the tick verifies/toasts and survives restarts
     note "launched $NAME" "$BRIEF in $pane" none; echo "$NAME → $pane ($LABEL), ${row:-watch row NOT armed (ledger locked >10 s) — the tick re-arms it from STATUS.md once the board row says working}"   # (012)
 
@@ -1547,5 +1660,9 @@ for l in reversed(lines):
   status-page)   # controlroom status-page [--publish] [--snapshot] [--cost] [--quiet] [--no-health] — render docs/status/latest.{md,html}; --publish commits docs/status/** only, pushes, enables Pages, runs publishers.sh, logs/publish.log
     status_py render "$@" || exit 1; case " $* " in *" --publish "*) status_py publish "$@";; esac ;;
   # ---- end status page (015) case arms ----
+  # ---- acceptance (018) case arms ----
+  check) check_py "$@" ;;   # controlroom check <NNN|brief.md|agent> [--json] [--help] — acceptance block + default checks + write-scope; exit 0/1/2
+  steer) cr5 steer "$@" ;;   # controlroom steer <agent> "<text>" — herdr agent prompt + `reply ACK S###`; the tick checks the pane for the ACK within 10 min
+  # ---- end acceptance (018) case arms ----
   *) sed -n '2,/^set -u/{/^set -u/!p;}' "$0" ;;   # help = the header comment block, however long it grows
 esac

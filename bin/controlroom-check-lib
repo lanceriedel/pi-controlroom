@@ -1,0 +1,17 @@
+#!/bin/bash
+# controlroom-check-lib (018) — helpers for a brief's `## Acceptance` block. `controlroom check` sources this file into the subshell
+# that runs each check line (env: ROOT BRIEF RESULT NUM CR_LIB); exit 0 = pass, one reason line on stderr = what `check` prints after `—`.
+# Also runnable directly (`controlroom-check-lib cr_has_section <file> "## Proof"`), so checks work from any shell on PATH.
+#   cr_has_section <file> "<heading>"   a markdown heading whose text starts with <heading> (## optional, case-insensitive)
+#   cr_has_sentinel <file> NNN          a line `DONE NNN` (or `DONE NNN-slug`)
+#   cr_max_lines <file> N               file has ≤ N lines
+#   cr_grep <file> <ERE>                grep -E matches
+#   cr_unchanged <path>…                `git status --porcelain` is empty for each path (read-only files)
+_cr_file(){ [ -f "$1" ] || { echo "no such file: ${1:-<empty>}" >&2; return 1; }; }
+cr_has_section(){ _cr_file "$1" || return 1; h=$(printf '%s' "$2" | sed 's/^#* *//')
+  awk -v h="$h" 'sub(/^#+[ \t]+/,"") && index(tolower($0),tolower(h))==1 {f=1} END{exit !f}' "$1" || { echo "no section \"## $h\" in ${1#$PWD/}" >&2; return 1; }; }
+cr_has_sentinel(){ _cr_file "$1" || return 1; grep -qE "^[[:space:]]*DONE[[:space:]]+$2([^0-9A-Za-z]|$)" "$1" || { echo "no \`DONE $2\` line in ${1#$PWD/}" >&2; return 1; }; }
+cr_max_lines(){ _cr_file "$1" || return 1; n=$(wc -l < "$1" | tr -d ' '); [ "$n" -le "$2" ] || { echo "${1#$PWD/} has $n lines (max $2)" >&2; return 1; }; }
+cr_grep(){ _cr_file "$1" || return 1; grep -qE -- "$2" "$1" || { echo "/$2/ not found in ${1#$PWD/}" >&2; return 1; }; }
+cr_unchanged(){ rc=0; for p in "$@"; do s=$(git -C "${ROOT:-.}" status --porcelain -- "$p" 2>/dev/null); [ -z "$s" ] || { echo "read-only path changed: $p ($(echo "$s" | head -1 | cut -c1-2 | tr -d ' '))" >&2; rc=1; }; done; return $rc; }
+case "${1:-}" in cr_*) "$@";; esac
