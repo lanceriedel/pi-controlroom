@@ -60,6 +60,8 @@ used on graph-search and taste-id-research:
 | Survives lid-close? | No — it pauses | **Yes** — workers, tick, strip, and the remote controller keep going |
 | Hand-off | **git**: results and board commits flow both ways; `host:` in each brief header says who owns it | same |
 
+**Moving the primary to the VM** is one sentence to the laptop controller — *"controller mode: remote"* — it commits, writes `MODE: remote` on the board and stops launching; the VM controller pulls and becomes primary (rounds, launches, landing, the status page), queuing anything that needs your identity under *Pending publish (local)*. *"controller mode: local"* hands it back with a written `HANDOFF` block.
+
 What this means in practice: close the laptop at 6 pm with three VM workers running; at 8 am the VM room has landed
 their results, updated the board, committed and pushed; the laptop room pulls, the strip shows what's new, and the
 status page is already current. The only things waiting are the ones that genuinely needed you.
