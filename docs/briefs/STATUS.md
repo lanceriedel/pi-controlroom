@@ -6,6 +6,8 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-17 08:30 — Round A037 #6: room empty. Still waiting on Lance: pi-host inputs (017); YubiKey for signing commits.
+- 11-16 08:55 — Round A037 #5 (Mon). Room empty, tree clean. Weekend: machines down 53 h (laptop closed), all four controllers alive on fable. Waiting on Lance: pi-host inputs (017).
 - 11-13 10:50 — Lance: **fable for all controllers**. gs/kumo/upi controllers handed off (handoff.md each, old sessions kept) to fresh claude-fable-5-1 sessions; pi default model → anthropic/claude-fable-5-1 (D028). Workers unchanged (per brief).
 - 11-13 10:25 — Round A037 #4 (fired 10:24: Mac asleep; 014 re-prompt handled). Room empty, tree clean. upi-clustering-research is self-running: design doc landed, 001/002/003 results in. Waiting on Lance: pi-host inputs (017).
 - 11-12 08:03 — Round A037 #3: room empty. Done since last round: gs-controller handed off to a fresh sol session (11-11 14:58); two kumo→wC misroutes → `launch` now names the controller pane id and forbids typing into other panes. Waiting on Lance: pi-host inputs (017).
