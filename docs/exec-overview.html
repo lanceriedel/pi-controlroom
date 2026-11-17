@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pi-controlroom — how it works, and how work continues when the laptop closes</title>
+<meta name="published" content="2026-11-17"><meta name="updated" content="2026-11-17">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 16.5px; line-height: 1.6; color: #e8e8e8; background: #0b0f14; }
+  .container { max-width: 1240px; margin: 36px auto; padding: 0 32px 120px; }
+  h1 { font-size: 34px; font-weight: 700; margin-bottom: 10px; color: #fff; }
+  h2 { font-size: 26px; font-weight: 700; margin: 72px 0 18px; color: #fff; border-bottom: 2px solid #1f2933; padding-bottom: 10px; scroll-margin-top: 24px; }
+  h3 { font-size: 19px; color: #fff; margin: 34px 0 12px; scroll-margin-top: 24px; }
+  h4 { font-size: 16.5px; color: #2dd4bf; margin: 26px 0 8px; scroll-margin-top: 24px; }
+  p { margin-bottom: 14px; color: #c9d1d9; }
+  .tw { overflow-x: auto; margin-bottom: 22px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: #10161d; border: 1px solid #1f2933; border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1a222c; vertical-align: top; }
+  th { font-weight: 600; background: #141c25; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #8b98a5; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; background: #161e28; color: #9be7d9; padding: 1px 5px; border-radius: 3px; }
+  pre { background: #10161d; border: 1px solid #1f2933; border-radius: 8px; padding: 14px 16px; margin: 0 0 18px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  ul { margin: 0 0 16px 22px; color: #c9d1d9; } li { margin-bottom: 8px; }
+  ol { margin: 0 0 16px 24px; color: #c9d1d9; }
+  .callout { background: #0f1f1c; border-left: 4px solid #2dd4bf; padding: 14px 18px; margin: 18px 0; border-radius: 0 6px 6px 0; color: #d7e3df; }
+  .toc { font-size: 14px; color: #8b98a5; background: #10161d; border: 1px solid #1f2933; border-radius: 8px; padding: 12px 16px; margin: 18px 0 8px; line-height: 1.9; }
+  .toc a { color: #2dd4bf; text-decoration: none; }
+  hr { border: 0; border-top: 1px solid #1f2933; margin: 40px 0; }
+  a { color: #2dd4bf; }
+  b { color: #fff; }
+  s { color: #6b7785; }
+  .lbl { display: inline-block; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; padding: 0 6px; border-radius: 3px; border: 1px solid; margin: 0 1px; vertical-align: 1px; white-space: nowrap; line-height: 1.7; }
+  .lbl-ver { color: #2dd4bf; border-color: #2dd4bf55; background: #2dd4bf14; }
+  .lbl-res { color: #a78bfa; border-color: #a78bfa55; background: #a78bfa14; }
+  .lbl-unv { color: #fbbf24; border-color: #fbbf2455; background: #fbbf2414; }
+  .lbl-spec { color: #f472b6; border-color: #f472b655; background: #f472b614; }
+  .lbl-pos { color: #fb923c; border-color: #fb923c55; background: #fb923c14; }
+  .lbl-sug { color: #94a3b8; border-color: #94a3b855; background: #94a3b814; }
+</style>
+</head>
+<body><div class="container">
+<h1 id="pi-controlroom-how-it-works-and-how-work-continues-when-the-laptop-closes">pi-controlroom — how it works, and how work continues when the laptop closes</h1>
+<p><i>Executive overview · 2026-11-17 · Lance Riedel</i></p>
+<h2 id="the-one-paragraph-version">The one-paragraph version</h2>
+<p>pi-controlroom turns a folder of Markdown files into a durable, multi-agent project office. One AI agent — the <b>controller</b> — talks to the human, writes work orders (<b>briefs</b>), launches <b>worker</b> agents in their own terminal panes, watches them, and integrates what they produce. Everything that matters is a file in the project's git repo: the board, the briefs, the results, the decisions and lessons learned, the schedule. Agents are disposable; the files are the memory. Because the files live in git and the workers can run on a remote VM, closing the laptop pauses the <i>person</i>, not the <i>project</i>.</p>
+<h2 id="what-it-is-made-of">What it is made of</h2>
+<div class="tw"><table><thead><tr><th>Piece</th><th>What it is</th><th>Why it matters</th></tr></thead><tbody><tr><td><b>Controller</b></td><td>A <code>pi</code> coding agent in a Herdr terminal pane, given a role prompt. One per room.</td><td>The single point of contact. It never does long work itself; it delegates and integrates.</td></tr><tr><td><b>Workers</b></td><td>More <code>pi</code> agents, one per brief, each in its own pane (laptop or VM).</td><td>Parallel, isolated, cheap to kill and restart.</td></tr><tr><td><b>Briefs → results</b></td><td><code>docs/briefs/NNN-slug.md</code> (objective, inputs, constraints, deliverable) → <code>docs/briefs/results/NNN-slug.md</code>.</td><td>Work is specified and reported in files, not chat. Anyone — human or agent — can read the whole history.</td></tr><tr><td><b>Board</b></td><td><code>docs/briefs/STATUS.md</code>: who's working on what, what's landed, what's waiting on the human.</td><td>The shared source of truth across people, agents and machines.</td></tr><tr><td><b>Memory</b></td><td><code>docs/briefs/memory/DECISIONS.md</code> + <code>LESSONS.md</code> — one-line, numbered, every line cites a source file. A "dream" step proposes consolidations; the controller accepts or rejects.</td><td>Institutional knowledge survives any single agent's context window.</td></tr><tr><td><b>Tick</b></td><td>A 60-second reconciler (launchd on macOS, a loop on Linux). Re-arms watchers, detects stuck workers, fires scheduled wakes, verifies prompts were received, republishes the status page.</td><td>The heartbeat. Nothing depends on a human noticing.</td></tr><tr><td><b>Automations</b></td><td>A ledger (<code>AUTOMATIONS.md</code>) of watch rows (worker finished/blocked), wakes (timed prompts to the controller — e.g. "every 2 h: integrate, land, update the board"), path watches, flush/compaction guards.</td><td>The controller schedules its own follow-ups; "A29 wakes me at 18:12" is behaviour, not a promise.</td></tr><tr><td><b>Status strip &amp; page</b></td><td>A live terminal panel per room; a published HTML page (<code>docs/status/latest.html</code>, GitHub Pages / lancedocs) regenerated after every launch and land.</td><td>Humans glance; nobody polls agents.</td></tr><tr><td><b>Herdr</b></td><td>The terminal multiplexer that owns the panes — locally and on remote machines (<code>herdr --machine dev002 …</code>).</td><td>One client, many hosts, same commands.</td></tr></tbody></table></div>
+<p>Footprint: ~1,500 lines of bash + Python (stdlib only), one 90-line pi extension, two prompt templates. No server, no database, no new daemons. Installed in one line; a room is created by typing <code>/controller</code> in a pane.</p>
+<h2 id="how-a-day-runs">How a day runs</h2>
+<ol><li>Human states a goal (or just says "ok"). Controller writes a brief, launches a worker, records the watch row.</li><li>Worker works for minutes to hours, saving partial results early, ending with a <code>DONE</code> sentinel.</li><li>The tick sees <code>DONE</code>, toasts, and the controller — on its next wake — reads the result, updates the board, "lands" the row, records any decision/lesson with its source, republishes the status page, and launches the next brief.</li><li>If a worker goes silent 20 minutes (<code>stuck?</code>), crashes, or needs the human (<code>blocked</code>), the strip turns red and the board says so. Only <code>blocked</code> ever needs a person.</li><li>Every ~2 h a standing wake prompts the controller to do a round even if nobody is typing.</li></ol>
+<h2 id="what-happens-when-the-laptop-closes">What happens when the laptop closes</h2>
+<p>The honest answer has two halves, because there are two kinds of state.</p>
+<p><b>State that is already safe (any room, any host):</b> the board, briefs, results, memory, automations ledger — all files, all in git. A controller or worker killed mid-sentence loses only its chat; a fresh agent re-reads the files ("Boot") and continues. This has been exercised repeatedly: controller sessions have been restarted, compacted, and handed off between models by writing a <code>handoff.md</code> and starting fresh. Nothing in the project depends on an agent's memory of the conversation.</p>
+<p><b>Work that keeps running (only if it isn't on the laptop):</b> a <code>pi</code> worker on the laptop stops when the lid closes (the process sleeps; API calls in flight time out). So long jobs run on a <b>remote VM</b> (<code>dev002</code>, <code>c4d</code>) that has its own Herdr server, its own clone of the repo, and its own <code>tick --loop</code>. The laptop just talks to it over SSH. The split used on graph-search and taste-id-research:</p>
+<div class="tw"><table><thead><tr><th></th><th>Laptop room (<code>local</code>)</th><th>VM room (<code>dev002</code> / <code>c4d</code>)</th></tr></thead><tbody><tr><td>Controller</td><td><code>&lt;project&gt;-controller</code> — <b>primary</b>; owns the board's <code>MODE:</code> line</td><td><code>&lt;project&gt;-remote</code> — secondary; pulls before every round</td></tr><tr><td>Runs</td><td>anything needing the human's identity: browser/SSO tools, publishing, Drive, chat</td><td>long jobs, pipelines (as the VM's service account), files-only research, evals</td></tr><tr><td>Survives lid-close?</td><td>No — it pauses</td><td><b>Yes</b> — workers, tick, strip, and the remote controller keep going</td></tr><tr><td>Hand-off</td><td><b>git</b>: results and board commits flow both ways; <code>host:</code> in each brief header says who owns it</td><td>same</td></tr></tbody></table></div>
+<p>What this means in practice: close the laptop at 6 pm with three VM workers running; at 8 am the VM room has landed their results, updated the board, committed and pushed; the laptop room pulls, the strip shows what's new, and the status page is already current. The only things waiting are the ones that genuinely needed you.</p>
+<p><b>Known limits, stated plainly</b></p>
+<ul><li>The laptop controller itself does not run while closed; the remote controller or the morning Boot covers it. A fully hosted controller (e.g. on pi.shopify.io's durable sessions) is the next step once that service exposes an API.</li><li>A wake scheduled while the laptop sleeps fires late, not never; the tick verifies the controller actually processed it and re-prompts on connection errors.</li><li>Agents' context windows fill; the extension flushes decisions to memory at 75 % and compacts. If compaction cannot shrink a session (seen once at 167 %), the fix is a fresh session booted from files — which is the design working, not failing.</li><li>Remote hosts need the same relative repo path as the laptop and a <code>~/.local/bin</code> on PATH for non-login shells; <code>docs/remote-host.md</code> is the checklist.</li></ul>
+<h2 id="why-this-shape">Why this shape</h2>
+<ul><li><b>Files first.</b> Chat is ephemeral and private to one agent; files are durable, shared, diffable, and reviewable by people.</li><li><b>Human closes the loop by default.</b> Automations toast and log; only wakes prompt the controller; only <code>blocked</code> interrupts a person. The room moves without you but never commits you to something you didn't choose.</li><li><b>Verifiable, not vibes.</b> Every memory line cites a source. Every durability claim was tested (ten scenarios, a code review, fixes, re-tests) before 0.2.0 shipped; failures found in use are recorded as lessons and fixed in the tool, so every room inherits the fix within a minute.</li><li><b>Cheap to run, cheap to leave.</b> No infrastructure to maintain; a room is a folder. Delete the panes and the project is still all there.</li></ul>
+<h2 id="numbers-so-far-nov-2026">Numbers so far (Nov 2026)</h2>
+<p>Seven rooms (pi-controlroom, lookbook-research, personalized-search-demo, graph-search, kumo-research, upi-clustering- research, taste-id-research) across a laptop and two VMs; graph-search alone: ~40 briefs, 37 worker sessions, three hosts, ~\$1,050 of model spend, from feasibility map to a working engine-native operator with a judged eval in ten days. pi-controlroom itself: 16 briefs, verified 0.2.x, 30 decisions / 30 lessons in memory.</p>
+<h2 id="where-to-look">Where to look</h2>
+<ul><li>Repo: <code>github.com/lanceriedel/pi-controlroom</code> — README (install, vocabulary, gotchas), <code>docs/design/durable-controlroom.md</code>, <code>docs/two-controller-protocol.md</code>, <code>docs/remote-host.md</code>.</li><li>A room: <code>docs/briefs/STATUS.md</code> (the board), <code>docs/status/latest.html</code> (the page), <code>docs/briefs/memory/</code> (what it has learned).</li><li>Comparison to the internal "ULTIMATE" harness: <code>docs/briefs/results/013-tobi-comparison.md</code>.</li></ul>
+</div></body>
+</html>
