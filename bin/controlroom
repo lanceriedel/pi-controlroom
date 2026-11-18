@@ -1036,8 +1036,30 @@ def board():   # STATUS.md head: `MODE: local|remote|<label>` · `controller: <n
     except Exception: return mode,ctls,handoff
     m=re.search(r"MODE:\**\s*`?(\w[\w-]*)",txt); mode=m.group(1).lower() if m else None
     for m in re.finditer(r"^\W{0,3}controller(?:\s*\(([^)]+)\))?:\**\s*`?([\w.-]+)`?",txt,re.M|re.I): ctls[(m.group(1) or "local").lower()]=m.group(2)
+    for m in re.finditer(r"controller\s*\(([^)]+)\)\s*:\**\s*`?([\w.-]+)`?",txt,re.I): ctls.setdefault(m.group(1).lower(),m.group(2))   # (020) `(controller (dev002): gs-remote, …)` mid-line, as the MODE line writes it
+    m2=re.search(r"MODE:[^\n]*?\(controller:\s*`?([\w.-]+)",txt,re.I); m2 and ctls.setdefault("local",m2.group(1))
     hs=re.findall(r"^## HANDOFF\s+(.+)$",txt,re.M); handoff=hs[-1].strip()[:16] if hs else None
     return mode,ctls,handoff
+def primary_of(mode,ctls,ms):   # (020) `MODE: remote` with several machines → the host named by `controller (<label>): …` on the board; one machine → that one; a label → itself
+    if mode in (None,"local"): return "local"
+    if mode in ms: return mode
+    if mode=="remote":
+        named=[h for h in ctls if h!="local" and h in ms]
+        return named[0] if named else (next(iter(ms)) if len(ms)==1 else None)
+    return None
+def badge(c):   # (020) Herdr sidebar: `herdr workspace report-metadata <ws> --source controlroom --token room=…` — display-only token next to the workspace label, so the ROOMS line's ‹PRIMARY› is visible in the top-right list without opening the strip. Local workspace = WS; remote = the workspace on each machine whose pane cwd ends in this repo's HOME-relative path (machines cache keeps agents' workspace_id).
+    try:
+        mode,ctls,_=board(); ms=c.get("machines",{}); primary=primary_of(mode,ctls,ms)
+        def tok(where,name): return f"★ PRIMARY · {name}" if primary==where else f"· {name}"+(f" → primary {primary}" if primary and primary!=where else "")
+        try: lag=json.loads(subprocess.run(["herdr","agent","list"],capture_output=True,text=True,timeout=5).stdout)["result"]["agents"]
+        except Exception: lag=[]
+        lname=ctls.get("local") or next((a.get("name") for a in lag if a.get("workspace_id")==WS and is_ctl(a.get("name"),"local",ctls)),None) or "controller"
+        if WS: subprocess.run(["herdr","workspace","report-metadata",WS,"--source","controlroom","--token",f"room={tok('local',lname)}"],capture_output=True,timeout=5)
+        for lab,e in ms.items():
+            if not e.get("reachable"): continue
+            wss={a.get("workspace_id") for a in e.get("agents",[]) if a.get("workspace_id")}
+            for w in wss: subprocess.run(["herdr","--machine",lab,"workspace","report-metadata",w,"--source","controlroom","--token",f"room={tok(lab,ctls.get(lab) or next((a['name'] for a in e.get('agents',[]) if is_ctl(a.get('name'),lab,ctls)),'remote'))}"],capture_output=True,timeout=8)
+    except Exception: pass
 def is_ctl(n,host="local",ctls={}):   # a controller: the board's `controller:` field for that host, or the naming convention
     n=n or ""; return bool(n) and (n==ctls.get(host) or n=="controller" or n.startswith("controller-") or n.endswith("-controller") or n.endswith("-remote"))
 def refresh(force=False,quiet=False):
@@ -1078,6 +1100,7 @@ def refresh(force=False,quiet=False):
         if old and old.get("reachable") is False: events.append((f"[{lab}] reachable again",f"down {max(1,int((now-(old.get('since') or now))//60))}m","done"))
         c["machines"][lab]={"target":m.get("target",""),"reachable":True,"since":old.get("since") if old.get("reachable") else now,"last_ok":now,"agents":new,"err":None,"fails":0,"first_miss":None}
     c["updated"]=now; save(c)
+    badge(c)   # (020) sidebar badge: which workspace holds this room's PRIMARY controller
     for t,b,s in events: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",t,b,s],env=dict(os.environ,ROOT=ROOT),timeout=10)
     if not quiet:
         for lab,e in c["machines"].items(): print(f"{lab:<12} {'reachable' if e['reachable'] else 'unreachable ('+str(e.get('err'))+')'} · {len(e.get('agents',[]))} agents · since {hhmm(e.get('since'))}")
@@ -1098,7 +1121,7 @@ elif cmd in ("header","agents"):
     ms=c.get("machines",{}); pid=open(CTRL).read().strip() if os.path.exists(CTRL) else ""
     local=[a for a in ags if not WS or a.get("workspace_id")==WS]
     def lctl(a): return a["pane_id"]==pid or is_ctl(a.get("name"),"local",ctls)
-    primary="local" if mode in (None,"local") else (mode if mode in ms else (next(iter(ms)) if mode=="remote" and len(ms)==1 else None))
+    primary=primary_of(mode,ctls,ms)
     rctl={lab:next((a["name"] for a in e.get("agents",[]) if is_ctl(a["name"],lab,ctls)),ctls.get(lab)) for lab,e in ms.items()}
     import shutil
     try: W=int(os.environ.get("COLUMNS") or 0) or shutil.get_terminal_size((120,20)).columns
