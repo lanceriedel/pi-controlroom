@@ -1090,6 +1090,7 @@ def refresh(force=False,quiet=False):
             panes=json.loads(pr.stdout)["result"]["panes"]; rel=os.path.relpath(ROOT,os.path.expanduser("~")).rstrip("/")
             wss={pn.get("workspace_id") for pn in panes if (pn.get("cwd") or "").rstrip("/").endswith("/"+rel)}
             if panes: ags=[a for a in ags if a.get("workspace_id") in wss]
+            m["_ws"]={w:{"panes":sum(1 for pn in panes if pn.get("workspace_id")==w),"agents":[a.get("name") for a in ags if a.get("workspace_id")==w and a.get("name")]} for w in wss}   # (020) every workspace of this repo on that machine — strays show on the strip, `gc --workspaces` closes them
         except Exception: pass
         return m,ags,None
     with ThreadPoolExecutor(max_workers=max(1,len(ms))) as ex: res=list(ex.map(q,ms))
@@ -1108,7 +1109,7 @@ def refresh(force=False,quiet=False):
             if st=="blocked": events.append((f"[{lab}] worker {n} NEEDS YOU",f"herdr --machine {lab} agent focus {n}","request"))
             elif prev=="working" and st in ("done","idle"): events.append((f"[{lab}] worker {n}: finished ({st})",f"controlroom verify {lab}/{n} · results are in the remote clone","done"))
         if old and old.get("reachable") is False: events.append((f"[{lab}] reachable again",f"down {max(1,int((now-(old.get('since') or now))//60))}m","done"))
-        c["machines"][lab]={"target":m.get("target",""),"reachable":True,"since":old.get("since") if old.get("reachable") else now,"last_ok":now,"agents":new,"err":None,"fails":0,"first_miss":None}
+        c["machines"][lab]={"target":m.get("target",""),"reachable":True,"since":old.get("since") if old.get("reachable") else now,"last_ok":now,"agents":new,"err":None,"fails":0,"first_miss":None,"workspaces":m.get("_ws",{})}
     c["updated"]=now; save(c)
     badge(c)   # (020) sidebar badge: which workspace holds this room's PRIMARY controller
     for t,b,s in events: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",t,b,s],env=dict(os.environ,ROOT=ROOT),timeout=10)
@@ -1210,6 +1211,8 @@ elif cmd in ("header","agents"):
         print(); print(bar(kind,lab.upper(),(f"reachable · {len(ag)} agents" if ok else f"{RED}unreachable{OFF} since {hhmm(e.get('since'))}{' · '+e['err'] if e.get('err') else ''}"+(" · last known:" if ag else ""))))
         render(kind,[dict(st=a["agent_status"],n=a["name"],pane=a["pane_id"],ctl=is_ctl(a["name"],lab,ctls),prim=is_ctl(a["name"],lab,ctls) and primary==lab,dim=not ok,extra=(f"   {DIM}{tasks.get(a['name'],'')[:90]}{OFF}" if detail and tasks.get(a["name"]) else "")) for a in ag])
         if not ag and ok: print(f"  {gutter(kind,False)}  {DIM}(no named agents){OFF}")
+        strays=[w for w,i in (e.get("workspaces") or {}).items() if not any(is_ctl(n,lab,ctls) for n in i.get("agents",[])) and not i.get("agents")]   # (020) workspaces of this repo with no agents at all — leftovers from `herdr workspace create`
+        if strays and ok: print(f"  {gutter(kind,False)}  {YEL}⚠ {len(strays)} stray workspace(s) for this repo: {' '.join(sorted(strays))}{OFF} {DIM}— controlroom gc --workspaces --apply{OFF}")
     if ms: print()
 else: print(f"rooms_py: unknown {cmd}",file=sys.stderr); sys.exit(1)
 PY
@@ -1685,6 +1688,30 @@ PY
     [ -f "$ROOT/docs/briefs/STATUS.md" ] && ! grep -q '^## Retired' "$ROOT/docs/briefs/STATUS.md" && printf '\n## Retired workers (tab closed; session resumable)\n| agent | when | reason | resume |\n|---|---|---|---|\n' >> "$ROOT/docs/briefs/STATUS.md"
     [ -f "$ROOT/docs/briefs/STATUS.md" ] && printf '| %s | %s | %s | `pi --resume %s` |\n' "$NAME" "$(date '+%m-%d %H:%M')" "$REASON" "$SESS" >> "$ROOT/docs/briefs/STATUS.md" ;;
   gc)       # controlroom gc [--hours 24] [--apply] [--keep a,b] | gc --logs [--days 7] [--apply]  — retire idle workers | archive stale pipeline logs to logs/archive/
+    if [ "${1:-}" = "--workspaces" ]; then   # (020) close stray Herdr workspaces of this repo (no agents at all) on every machine; dry-run unless --apply. Never the local WS, never one with agents.
+      shift; APPLY=0; [ "${1:-}" = "--apply" ] && APPLY=1
+      ROOT="$ROOT" WS="$WS" APPLY="$APPLY" python3 - <<'PY'
+import json,os,subprocess
+root=os.environ["ROOT"]; ws=os.environ.get("WS",""); apply=os.environ["APPLY"]=="1"; rel=os.path.relpath(root,os.path.expanduser("~")).rstrip("/")
+def sh(c,t=15):
+    try: return json.loads(subprocess.run(c,capture_output=True,text=True,timeout=t).stdout)["result"]
+    except Exception: return {}
+n=0
+machines=["local"]+[l.split("\t")[1] for l in subprocess.run(["herdr","machine","list"],capture_output=True,text=True,timeout=10).stdout.splitlines() if l.count("\t")>=2]
+for mach in machines:
+    base=["herdr"]+(["--machine",mach] if mach!="local" else [])
+    panes=sh(base+["pane","list"]).get("panes",[]); ags=sh(base+["agent","list"]).get("agents",[])
+    wss={pn.get("workspace_id") for pn in panes if (pn.get("cwd") or "").rstrip("/").endswith("/"+rel)}
+    for w in sorted(wss):
+        if mach=="local" and w==ws: continue
+        if any(a.get("workspace_id")==w and a.get("name") for a in ags): continue
+        n+=1
+        if apply: subprocess.run(base+["workspace","close",w],capture_output=True,timeout=15); print(f"closed    {mach}/{w}")
+        else: print(f"would close  {mach}/{w}  (this repo, no agents)")
+print("gc --workspaces: nothing stray" if n==0 else ("" if apply else "→ controlroom gc --workspaces --apply"))
+PY
+      exit 0
+    fi
     if [ "${1:-}" = "--logs" ]; then   # (015.11) pipeline logs not written for N days (default 7) → logs/archive/YYYY-MM/ (agents.log, tick.log, publish.log never)
       shift; DAYS=7; APPLY=0; while [ $# -gt 0 ]; do case "$1" in --days) DAYS=$2; shift 2;; --apply) APPLY=1; shift;; *) shift;; esac; done
       n=0; for f in "$ROOT"/logs/*.log; do [ -f "$f" ] || continue; b=$(basename "$f" .log); case "$b" in agents|tick|publish) continue;; esac

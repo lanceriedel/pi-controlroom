@@ -350,6 +350,7 @@ back → verified on the laptop — took about **65 s**.
 | `controlroom statusbar` | the live strip (pager) |
 | `controlroom detail` / `detail-on` / `detail-off` | toggle the detail view (flag in `~/.config/controlroom/`) |
 | `controlroom retire <agent> [reason]` | close a worker's tab; its pi session stays on disk and the board records `pi --resume <session>` |
+| `controlroom gc --workspaces [--apply]` | list/close stray Herdr workspaces of this repo (no agents) on the laptop and every saved machine — leftovers from `herdr workspace create`; the strip warns `⚠ N stray workspace(s)` |
 | `controlroom gc --logs [--days 7] [--apply]` | archive pipeline logs idle > N days to `logs/archive/YYYY-MM/` (the strip already hides done >24 h · no-marker >6 h · failed >7 d) |
 | `controlroom gc [--hours 24] [--apply] [--keep a,b]` | list (dry run) or retire workers idle longer than N hours; never touches the controller or working/blocked agents |
 | `controlroom decide "…" --from <source> [--slug s]` | append a `D###` line to `docs/briefs/memory/DECISIONS.md`; refuses without `--from` (path must exist, or `chat:<ts>`) |
