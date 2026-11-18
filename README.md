@@ -71,6 +71,14 @@ command = "controlroom detail"
 
 ---
 
+## Do I need git?
+
+Not for one room on one machine: `controlroom init` works in any folder and everything is plain files (the board, briefs,
+results, memory, automations). In that **single-room mode** the strip says `sync: not a git checkout`, `check` skips
+write-scope/read-only (they need `git status`), and `status-page --publish` only renders `docs/status/latest.html`
+(`publishers.sh` can copy it anywhere). `git init` at any time turns on history, GitHub Pages and the two-room hand-off —
+git is the spine of anything that spans machines.
+
 ## The vocabulary
 
 ### Controller

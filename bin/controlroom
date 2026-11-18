@@ -28,6 +28,7 @@
 set -u
 CMD=${1:-help}; shift || true
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+HAS_GIT=1; git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || HAS_GIT=0; export HAS_GIT   # (020) single-room, no-git mode: everything is still files; only sync/publish/write-scope/`land` git warnings are off
 LOG="$ROOT/logs/agents.log"; mkdir -p "$ROOT/logs" "$HOME/.config/controlroom"
 [ -z "${HERDR_WORKSPACE_ID:-}" ] && [ -n "${HERDR_PANE_ID:-}" ] && export HERDR_WORKSPACE_ID="${HERDR_PANE_ID%%:*}"   # (014.2) derive ws from the pane id when Herdr didn't pass it — detail flag + WS must key the same everywhere
 DETAIL_FLAG="$HOME/.config/controlroom/detail.${HERDR_WORKSPACE_ID:-default}"
@@ -1385,6 +1386,12 @@ def publish_pages():   # (016) preferred path: controlroom-pages pushes latest.{
     if gh.startswith("pushed"): open(LOG,"a").write(f"[{now:%m-%d %H:%M}] status page — pushed {url or 'gh-pages'}\n")
     sys.exit(0 if gh.startswith("pushed") else 1)
 def publish():
+    if os.environ.get("HAS_GIT")=="0":   # (020) no git → nothing to push; publishers.sh still runs (copy latest.html wherever)
+        n_pub=0
+        if os.path.exists(PUB) and os.access(PUB,os.X_OK):
+            rc,o,e=sh(["bash",PUB],900,env=dict(os.environ,STATUS_MD=MD,STATUS_HTML=HT,ROOT=root,STATUS_URL="")); n_pub=sum(1 for l in o.splitlines() if l.startswith("published "))
+        line=f"[{now:%Y-%m-%d %H:%M}] status-page ghpages=skipped(no-git) publishers={n_pub} url=- (single-room mode: docs/status/latest.html rendered)"
+        os.makedirs(os.path.dirname(LOG),exist_ok=True); open(os.path.join(os.path.dirname(LOG),"publish.log"),"a").write(line+"\n"); say(line); sys.exit(0)
     if os.environ.get("CONTROLROOM_PAGES_MODE","orphan")!="docs": publish_pages()   # (016) default; CONTROLROOM_PAGES_MODE=docs = legacy commit-to-master:/docs path below
     gh="pushed"; pages=""; url=""; n_pub=0
     docs=os.path.join(root,"docs"); nj=os.path.join(docs,".nojekyll"); ix=os.path.join(docs,"index.html")
@@ -1477,14 +1484,16 @@ rel=os.path.relpath(RESULT,ROOT); ex=os.path.exists(RESULT); rt=open(RESULT,erro
 add("default: result file exists",ex,"" if ex else f"no {rel}")
 add(f"default: `DONE {NUM}` in result",re.search(r"^\s*DONE\s+%s(?![0-9A-Za-z])"%NUM,rt,re.M),f"no `DONE {NUM}` line in {rel}" if ex else "no result file")
 add("default: `## Deviations` section in result",re.search(r"^#+\s+Deviations\b",rt,re.M|re.I),f"no `## Deviations` heading in {rel} (write `none` if there were none)" if ex else "no result file")
+NOGIT=os.environ.get("HAS_GIT")=="0"
 def gs():   # git status --porcelain paths (staged + unstaged + untracked), repo-relative
     try: o=subprocess.run(["git","-C",ROOT,"status","--porcelain","--untracked-files=all"],capture_output=True,text=True,timeout=30).stdout
     except Exception: return []
     return sorted({(l[3:].split(" -> ")[-1]).strip().strip('"') for l in o.splitlines() if len(l)>3})
 DIRTY=gs()
-for p in RO: bad=[d for d in DIRTY if d==p.rstrip("/") or d.startswith(p.rstrip("/")+"/")]; add(f"default: read-only {p} unchanged",not bad,"changed: "+" ".join(bad) if bad else "")
+for p in ([] if NOGIT else RO): bad=[d for d in DIRTY if d==p.rstrip("/") or d.startswith(p.rstrip("/")+"/")]; add(f"default: read-only {p} unchanged",not bad,"changed: "+" ".join(bad) if bad else "")
 def rx(g): g=g.strip("/") if g.endswith("/") else g; g=re.escape(g).replace(r"\*\*/","(.*/)?").replace(r"\*\*",".*").replace(r"\*","[^/]*").replace(r"\?","[^/]"); return re.compile("^"+g+"(/.*)?$")
-if WRITES:   # write-scope: dirty paths outside writes: ∪ implicit (results/NNN*, the result, logs/**, the board/ledger/memory/status page the controller and the CLI write)
+if NOGIT: rows.append(("write-scope",None,"no git here — write-scope and read-only checks need `git status`; not enforced"))
+elif WRITES:   # write-scope: dirty paths outside writes: ∪ implicit (results/NNN*, the result, logs/**, the board/ledger/memory/status page the controller and the CLI write)
     allow=[rx(g) for g in WRITES+[f"docs/briefs/results/{NUM}*",os.path.relpath(RESULT,ROOT),"logs/**","docs/briefs/STATUS.md","docs/briefs/AUTOMATIONS.md","docs/briefs/memory/**","docs/status/**","docs/briefs/results/*-judge.md","docs/briefs/results/*-judge-verdict.md"]]   # (019) judge reports are CLI artefacts
     out=[d for d in DIRTY if not any(a.match(d) for a in allow)]
     add("write-scope: "+" ".join(out) if out else f"write-scope (writes: {', '.join(WRITES)})",not out,f"{len(out)} path(s) in git status outside writes: {', '.join(WRITES)}")
@@ -1575,6 +1584,7 @@ case "$CMD" in
     MEMFLAGS=""; for a in "$@"; do case "$a" in --no-seed|--memory-only) MEMFLAGS="$MEMFLAGS $a";; esac; done   # memory (004)
     case "$MEMFLAGS" in *memory-only*) mem_py init $MEMFLAGS; exit $?;; esac                                # memory (004): scaffold only, no pane/agent changes
     need_herdr; ROWS=9; [ "${1:-}" = "--rows" ] && ROWS=${2:-9}
+    [ "$HAS_GIT" = 1 ] || echo "git       none — single-room mode: board/briefs/results/memory are plain files here; no history, no two-room sync, no GitHub Pages (status-page still renders docs/status/latest.html; publishers.sh can copy it). \`git init\` any time to turn these on."
     out=$(herdr agent rename "$HERDR_PANE_ID" controller 2>&1) && echo "agent → controller" || case "$out" in   # (012) 009 bug 1: say so, and take controller-<ws> (names are global — L012; automations use the pane id)
       *agent_name_taken*) herdr agent rename "$HERDR_PANE_ID" "controller-$WS" >/dev/null 2>&1 && echo "agent → controller-$WS (global name 'controller' is held by another room — pane id still pins this controller)" || echo "agent rename failed: ${out:0:140}";;
       *) echo "agent rename failed: ${out:0:140}";; esac
