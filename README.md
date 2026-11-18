@@ -4,8 +4,6 @@ A control room for [pi](https://pi.dev) + [Herdr](https://herdr.dev).
 
 One pi becomes the **controller**: it talks to you, writes work packets (**briefs**), launches **worker** pis in their own Herdr tabs, watches them, and integrates what they produce. Workers never talk to each other or to the controller — they communicate through **files in the repo**, so nothing is lost when a session drops, and you can always see where everything stands on a **live status strip**.
 
-It was built while running ~15 agents over a week on a data project. Everything in here is a convention plus ~400 lines of shell and Python — Herdr and pi supply the primitives (panes, agent states, a CLI); this package supplies the operating model.
-
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ CONTROLLER tab                                                           │
