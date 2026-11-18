@@ -1054,11 +1054,21 @@ def badge(c):   # (020) Herdr sidebar: `herdr workspace report-metadata <ws> --s
         try: lag=json.loads(subprocess.run(["herdr","agent","list"],capture_output=True,text=True,timeout=5).stdout)["result"]["agents"]
         except Exception: lag=[]
         lname=ctls.get("local") or next((a.get("name") for a in lag if a.get("workspace_id")==WS and is_ctl(a.get("name"),"local",ctls)),None) or "controller"
-        if WS: subprocess.run(["herdr","workspace","report-metadata",WS,"--source","controlroom","--token",f"room={tok('local',lname)}"],capture_output=True,timeout=5)
+        STAR=" ★"   # Herdr's sidebar renders only its own tokens (branch/ahead), so the visible signal is the workspace label: `<label> ★` on the primary room's workspace, star removed elsewhere. Only the star suffix is ever touched.
+        def star(machine,w,on):
+            cmd=["herdr"]+(["--machine",machine] if machine!="local" else [])
+            try:
+                info=json.loads(subprocess.run(cmd+["workspace","get",w],capture_output=True,text=True,timeout=8).stdout)["result"]["workspace"]; lab0=info.get("label") or ""
+                want=lab0.rstrip().removesuffix(STAR)+(STAR if on else "")
+                if want!=lab0: subprocess.run(cmd+["workspace","rename",w,want],capture_output=True,timeout=8)
+                subprocess.run(cmd+["workspace","report-metadata",w,"--source","controlroom","--token",f"room={tok(machine,lname if machine=='local' else (ctls.get(machine) or 'remote'))}"],capture_output=True,timeout=8)
+            except Exception: pass
+        if WS: star("local",WS,primary=="local")
         for lab,e in ms.items():
             if not e.get("reachable"): continue
             wss={a.get("workspace_id") for a in e.get("agents",[]) if a.get("workspace_id")}
-            for w in wss: subprocess.run(["herdr","--machine",lab,"workspace","report-metadata",w,"--source","controlroom","--token",f"room={tok(lab,ctls.get(lab) or next((a['name'] for a in e.get('agents',[]) if is_ctl(a.get('name'),lab,ctls)),'remote'))}"],capture_output=True,timeout=8)
+            cw=next((a.get("workspace_id") for a in e.get("agents",[]) if is_ctl(a.get("name"),lab,ctls) and a.get("workspace_id")),None)   # the remote controller's workspace gets the star; other workspaces of this repo on that machine lose it
+            for w in wss: star(lab,w,primary==lab and w==cw)
     except Exception: pass
 def is_ctl(n,host="local",ctls={}):   # a controller: the board's `controller:` field for that host, or the naming convention
     n=n or ""; return bool(n) and (n==ctls.get(host) or n=="controller" or n.startswith("controller-") or n.endswith("-controller") or n.endswith("-remote"))
