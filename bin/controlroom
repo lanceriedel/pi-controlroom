@@ -1063,12 +1063,26 @@ def badge(c):   # (020) Herdr sidebar: `herdr workspace report-metadata <ws> --s
                 if want!=lab0: subprocess.run(cmd+["workspace","rename",w,want],capture_output=True,timeout=8)
                 subprocess.run(cmd+["workspace","report-metadata",w,"--source","controlroom","--token",f"room={tok(machine,lname if machine=='local' else (ctls.get(machine) or 'remote'))}"],capture_output=True,timeout=8)
             except Exception: pass
+        def tab(machine,agent_tab,on):   # (020) the controller's TAB says its role too: `★ CONTROLLER` (primary) vs `CONTROLLER · standby`; only tabs currently labelled CONTROLLER-ish are touched
+            if not agent_tab: return
+            cmd=["herdr"]+(["--machine",machine] if machine!="local" else [])
+            try:
+                t=json.loads(subprocess.run(cmd+["tab","get",agent_tab],capture_output=True,text=True,timeout=8).stdout)["result"]; t=t.get("tab",t); cur=(t.get("label") or "")
+                if "CONTROLLER" not in cur.upper(): return
+                want="★ CONTROLLER" if on else "CONTROLLER · standby"
+                if cur!=want: subprocess.run(cmd+["tab","rename",agent_tab,want],capture_output=True,timeout=8)
+            except Exception: pass
         if WS: star("local",WS,primary=="local")
+        try:
+            pid=open(os.path.join(ROOT,"logs/.controller")).read().strip() if os.path.exists(os.path.join(ROOT,"logs/.controller")) else ""
+            ltab=next((a.get("tab_id") for a in lag if a.get("pane_id")==pid),None); tab("local",ltab,primary=="local")
+        except Exception: pass
         for lab,e in ms.items():
             if not e.get("reachable"): continue
             wss={a.get("workspace_id") for a in e.get("agents",[]) if a.get("workspace_id")}
             cw=next((a.get("workspace_id") for a in e.get("agents",[]) if is_ctl(a.get("name"),lab,ctls) and a.get("workspace_id")),None)   # the remote controller's workspace gets the star; other workspaces of this repo on that machine lose it
             for w in wss: star(lab,w,primary==lab and w==cw)
+            rtab=next((a.get("tab_id") for a in e.get("agents",[]) if is_ctl(a.get("name"),lab,ctls) and a.get("tab_id")),None); tab(lab,rtab,primary==lab)
     except Exception: pass
 def is_ctl(n,host="local",ctls={}):   # a controller: the board's `controller:` field for that host, or the naming convention
     n=n or ""; return bool(n) and (n==ctls.get(host) or n=="controller" or n.startswith("controller-") or n.endswith("-controller") or n.endswith("-remote"))
