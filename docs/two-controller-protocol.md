@@ -18,7 +18,7 @@ on that host launches, watches and integrates it. Default split:
 
 ## 2. Modes
 The human switches; the current mode is the `MODE:` line at the top of `STATUS.md`.
-- **"controller mode: remote"** → `<local>` commits + pushes, writes `MODE: remote since <time>`, and **stops
+- **"controller mode: remote"** (with several machines: **"controller mode: remote <label>"**, e.g. `remote dev002`) → `<local>` commits + pushes, writes `MODE: remote since <time> (controller (<label>): <remote-controller-name>, Herdr <ws>)` — the tick reads `controller (<label>)` to place the ★ / `★ CONTROLLER` labels — and **stops
   launching**. `<remote>` pulls and becomes primary for everything tagged with its host and for new work the human
   sends it.
 - **"controller mode: local"** → `<remote>` commits + pushes a `## HANDOFF <time>` block in `STATUS.md` (what landed,
