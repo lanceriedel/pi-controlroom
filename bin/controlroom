@@ -23,6 +23,7 @@
 #   controlroom status-page [--publish] [--snapshot] [--cost] [--quiet]   (015) docs/status/latest.{md,html} from STATUS.md + health + docs/status/preamble.md (yours); --publish → commit docs/status/** · GitHub Pages (enables it) · docs/status/publishers.sh · logs/publish.log. launch/land call it (opt-out: D-line slug status-page-off or CONTROLROOM_STATUS_PAGE=0)
 #   controlroom cancel --prune-fired    (012) drop fired/cancelled one-shot rows from AUTOMATIONS.md (ids never reused) · touch logs/AUTOPROMPT-OFF = per-room kill switch (tick + strip)
 #   controlroom check <NNN|brief|agent> [--json]   (018) run the brief's `## Acceptance` ```sh block + default checks (result · DONE NNN · ## Deviations · read-only: unchanged) + write-scope (`writes:` globs vs git status); exit 0 pass · 1 fail · 2 no brief. `land` refuses failing rows (`land --force` lands with a note)
+#   controlroom judge <NNN|brief|agent> [--model id] [--here] [--json]   (019) LLM completion gate: grades the result against the brief (requirement · source · PASS/PARTIAL/FAIL/N-A · quoted evidence) → results/NNN-judge.md; `land` runs it after `check` (advisory; a `must:` FAIL refuses, `land --force`; `--no-judge` / D-line `judge-off` skip)
 #   controlroom steer <agent> "<text>"   (018) prompt a working agent and demand `ACK S###`; the tick toasts once if the ACK is missing after 10 min; steering a `done` agent logs `steer after DONE`
 set -u
 CMD=${1:-help}; shift || true
@@ -332,7 +333,7 @@ def steer_step(st,dry,acts):   # every open steer: pane tail shows `ACK S###` on
 def accept_step(brd,cache,dry,acts):   # one `check --json` per pass at most: board rows whose newest results/NNN-*.md mtime differs from the cached one
     ac=cache.setdefault("acceptance",{})
     for n,b in brd.items():
-        m=re.search(r"\d{3}",b["brief"]); rs=glob.glob(os.path.join(BR,"results",m.group(0)+"-*.md")) if m else []
+        m=re.search(r"\d{3}",b["brief"]); rs=[p for p in (glob.glob(os.path.join(BR,"results",m.group(0)+"-*.md")) if m else []) if not re.search(r"-judge(-verdict)?\.md$",p)]   # (019) a judge report is not the result
         if not rs: ac.pop(n,None); continue
         mt=max(map(os.path.getmtime,rs))
         if ac.get(n,{}).get("mtime")==mt: continue
@@ -843,18 +844,32 @@ elif cmd=="land":
             dropped.append(" ".join(x.strip() for x in src[i:j])); i=j; continue
         out.append(l); i+=1
     if not moved and not dropped: print("land: nothing to move (no `done` rows with a result link, no struck decisions)"); sys.exit()
-    kept=[]   # (018) acceptance gate: `controlroom check <brief>` per row; FAIL → row stays with state `done — acceptance failed (N): <first>` (+ one toast/log per transition); --force lands with `(accepted with failures: …)`
+    kept=[]; nob=set()   # (018) acceptance gate: `controlroom check <brief>` per row; FAIL → row stays with state `done — acceptance failed (N): <first>` (+ one toast/log per transition); --force lands with `(accepted with failures: …)`
     for c in list(moved):
         num=re.search(r"\d{3}",c[2]); num=num.group(0) if num else c[2]
         r=None
         try: r=subprocess.run([SELF,"check",num,"--json"],capture_output=True,text=True,timeout=600,cwd=root,env=dict(os.environ,ROOT=root)); j=json.loads(r.stdout)
         except Exception as e: j={"ok":False,"fails":[f"check {num} produced no verdict ({type(e).__name__})"],"fail":1}
-        if j.get("ok") or (r is not None and r.returncode==2): continue   # pass, or no brief file for this row (pre-018 rows) → lands as before
+        if r is not None and r.returncode==2: nob.add(num); continue   # no brief file for this row (pre-018 rows) → lands as before, unjudged (019)
+        if j.get("ok"): continue
         first=(j.get("fails") or ["?"])[0]; summary="; ".join(j.get("fails") or [])
         if force: c[4]=c[4].rstrip()+f" (accepted with failures: {summary})"; print(f"⚠ {c[1]:<18} {c[2]}  forced — {j.get('fail')} failing: {summary}"); continue
         moved.remove(c); fresh=not c[3].startswith("done — acceptance failed"); c[3]=f"done — acceptance failed ({j.get('fail')}): {first}"[:160]; kept.append(c)
         print(f"refused {c[1]:<18} {c[2]}  acceptance failed ({j.get('fail')}): {summary}\n        row → `{c[3]}` · controlroom check {num} · land --force to accept")
         if fresh: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",f"acceptance failed {c[1]}: {first}",f"{j.get('fail')} failing · controlroom check {num} · land --force to accept","request"],env=dict(os.environ,ROOT=root),timeout=20)
+    nj="--no-judge" in args or any("**judge-off**" in l for l in active("D"))   # (019) opt-out: flag, or the room's D-line slug `judge-off`
+    for c in list(moved):   # (019) judge after check: advisory (one-liner gets ` · judge: <verdict>`), except a `must:` FAIL → refuse like acceptance; --force lands with `REJECT (forced)`
+        num=re.search(r"\d{3}",c[2]); num=num.group(0) if num else c[2]
+        if nj or num in nob: continue
+        try: r=subprocess.run([SELF,"judge",num,"--json"],capture_output=True,text=True,timeout=420,cwd=root,env=dict(os.environ,ROOT=root)); jj=json.loads(r.stdout.strip().splitlines()[-1])
+        except Exception as e: print(f"⚠ judge {num}: no verdict ({type(e).__name__}; {(r.stderr if 'r' in dir() and r else '').strip()[-120:]}) — landing ungraded"); continue
+        v=jj.get("verdict","NO VERDICT"); mf=jj.get("must_fail") or []
+        if mf and not force:
+            moved.remove(c); fresh=not c[3].startswith("done — judge"); c[3]=f"done — judge REJECT (must: {mf[0]})"[:160]; kept.append(c)
+            print(f"refused {c[1]:<18} {c[2]}  judge: must: FAIL — {'; '.join(mf)}\n        row → `{c[3]}` · {jj.get('file')} · land --force to accept")
+            if fresh: subprocess.run(["bash","-c",f'cd "$ROOT" && source "{SELF}" __lib__ 2>/dev/null; note "$@"',"_",f"judge REJECT {c[1]}: must: {mf[0][:80]}",f"{jj.get('file')} · land --force to accept","request"],env=dict(os.environ,ROOT=root),timeout=20)
+            continue
+        c[4]=c[4].rstrip()+f" · judge: {v}"+(" (forced)" if mf else ""); print(f"judge   {c[1]:<18} {c[2]}  {v} · {jj.get('file')}"+(f" — forced past must: {'; '.join(mf)}" if mf else ""))
     out=[("| "+" | ".join(c)+" |" if c in kept else None) if isinstance(c,list) else c for c in out]; out=[l for l in out if l is not None]
     if not moved and not dropped:
         tmp=sp+".tmp"; open(tmp,"w").write("\n".join(out)+"\n"); os.replace(tmp,sp); sys.exit(1)   # board shows the failure; nothing landed
@@ -1152,6 +1167,8 @@ elif cmd in ("header","agents"):
             st={"done":"done","crashed":"crashed","stalled":"stalled"}.get(v,st)
         ex=(f"   {DIM}{tasks.get(n,'')[:90]}{OFF}" if detail and tasks.get(n) else "")+(f"   {DIM}last write {h['last_write']} · ctx {h.get('ctx_pct','?')}%{OFF}" if detail and h.get("last_write") else "")
         ac=AC.get(n); ex+=(f"   {GRN}✓ acceptance{OFF}" if ac["ok"] else f"   {RED}✗ acceptance ({ac['fail']}){OFF}"+(f" {DIM}{ac.get('first','')[:60]}{OFF}" if detail else "")) if ac else ""   # (018) once a result file exists (tick: `check` cached by result mtime)
+        jm=re.search(r"\d{3}",tasks.get(n,"")); jf=jm and next((f for f in (os.path.join(ROOT,"docs/briefs/results",jm.group(0)+x) for x in ("-judge-verdict.md","-judge.md")) if os.path.exists(f)),""); jv=(re.search(r"^#+\s*Verdict[^\n]*\n\s*\**\s*(ACCEPT WITH NOTES|ACCEPT|REJECT)",open(jf).read(),re.M|re.I) or [None,""])[1].upper() if jf and os.path.exists(jf) else ""   # (019) judge verdict from results/NNN-judge.md
+        ex+=f"   {GRN if jv=='ACCEPT' else YEL if jv.startswith('ACCEPT') else RED}⚖ judge: {jv}{OFF}" if jv else ""
         rows.append(dict(st=st,n=n,pane=a["pane_id"],ctl=lctl(a),prim=lctl(a) and primary=="local",extra=ex,ll=lastline(n) if detail and st in ("working","stuck?","spinning?") else ""))
     render("local" if ms else "",rows)
     if not local and not ms: print("   (no agents in this workspace)")
@@ -1392,7 +1409,7 @@ k=pos[0]; m=re.search(r"(\d{3})",k if not os.path.isfile(k) else os.path.basenam
 BRIEF=os.path.abspath(k) if os.path.isfile(k) else (sorted(glob.glob(os.path.join(BR,m.group(1)+"-*.md")))+[None])[0] if m else None
 if not BRIEF: print(f"check: brief not found for {k!r} (number, docs/briefs/NNN-*.md path, or an agent on the board)",file=sys.stderr); sys.exit(2)
 NUM=(re.match(r"(\d{3})",os.path.basename(BRIEF)) or [None,""])[1]; agent=next((a for a,b in board().items() if NUM and NUM in b),None)
-RES=sorted(glob.glob(os.path.join(BR,"results",NUM+"-*.md")) if NUM else []); RESULT=RES[0] if RES else os.path.join(BR,"results",os.path.basename(BRIEF))
+RES=sorted(p for p in (glob.glob(os.path.join(BR,"results",NUM+"-*.md")) if NUM else []) if not re.search(r"-judge(-verdict)?\.md$",p)); RESULT=RES[0] if RES else os.path.join(BR,"results",os.path.basename(BRIEF))
 txt=open(BRIEF,errors="replace").read(); nof=re.sub(r"^```.*?^```[^\n]*$","",txt,flags=re.M|re.S)
 hdr=lambda key: [x.strip().strip("`") for x in re.split(r"\s*,\s*",(re.search(r"^%s:\s*(.+)$"%key,nof,re.M) or [None,""])[1].strip()) if x.strip()]
 WRITES,RO=hdr("writes"),hdr("read-only")
@@ -1418,7 +1435,7 @@ DIRTY=gs()
 for p in RO: bad=[d for d in DIRTY if d==p.rstrip("/") or d.startswith(p.rstrip("/")+"/")]; add(f"default: read-only {p} unchanged",not bad,"changed: "+" ".join(bad) if bad else "")
 def rx(g): g=g.strip("/") if g.endswith("/") else g; g=re.escape(g).replace(r"\*\*/","(.*/)?").replace(r"\*\*",".*").replace(r"\*","[^/]*").replace(r"\?","[^/]"); return re.compile("^"+g+"(/.*)?$")
 if WRITES:   # write-scope: dirty paths outside writes: ∪ implicit (results/NNN*, the result, logs/**, the board/ledger/memory/status page the controller and the CLI write)
-    allow=[rx(g) for g in WRITES+[f"docs/briefs/results/{NUM}*",os.path.relpath(RESULT,ROOT),"logs/**","docs/briefs/STATUS.md","docs/briefs/AUTOMATIONS.md","docs/briefs/memory/**","docs/status/**"]]
+    allow=[rx(g) for g in WRITES+[f"docs/briefs/results/{NUM}*",os.path.relpath(RESULT,ROOT),"logs/**","docs/briefs/STATUS.md","docs/briefs/AUTOMATIONS.md","docs/briefs/memory/**","docs/status/**","docs/briefs/results/*-judge.md","docs/briefs/results/*-judge-verdict.md"]]   # (019) judge reports are CLI artefacts
     out=[d for d in DIRTY if not any(a.match(d) for a in allow)]
     add("write-scope: "+" ".join(out) if out else f"write-scope (writes: {', '.join(WRITES)})",not out,f"{len(out)} path(s) in git status outside writes: {', '.join(WRITES)}")
 else: rows.append(("write-scope",None,"no writes: header in the brief — not enforced"))
@@ -1431,6 +1448,64 @@ sys.exit(0 if ok else 1)
 PY
 }
 # ---- end acceptance ----
+
+# ---- judge (019) ----  LLM completion gate: prompts/judge.md + brief + result (inlined) → `pi -p` (bounded: 5-min alarm, `read` tool only, linked files ≤ 2k lines listed) → results/NNN-judge.md (overwritten) + `judge NNN: <verdict> ($x)` in agents.log.
+# `land` runs it after `check`: advisory, except a `must:` FAIL → refuse like acceptance (`land --force` → `REJECT (forced)`). Never on a clock (D014). Default model openai/gpt-6.1-sol (CONTROLROOM_JUDGE_MODEL) — never the room's controller model. --here → Herdr worker judge-NNN.
+judge_py(){ ROOT="$ROOT" SELF="$0" LOG="$LOG" python3 - "$@" <<'PY'
+import os,re,sys,json,subprocess,time,datetime as dt
+ROOT=os.environ["ROOT"]; SELF=os.environ["SELF"]; BR=os.path.join(ROOT,"docs/briefs"); args=sys.argv[1:]; pos=[a for a in args if not a.startswith("--")]; js="--json" in args; here="--here" in args
+def opt(k): return args[args.index(k)+1] if k in args and args.index(k)+1<len(args) else None
+def die(m,rc=2): print(m,file=sys.stderr); sys.exit(rc)
+USAGE="usage: controlroom judge <NNN | brief.md | agent> [--model provider/id] [--here] [--json]   LLM grade of the result against the brief (read-only, ≤ 5 min) → docs/briefs/results/NNN-judge.md\n  exit 0 ACCEPT · 1 ACCEPT WITH NOTES | REJECT (advisory) · 3 a `must:` requirement FAILed (land refuses; land --force) · 2 no brief/result/verdict. Model: --model, $CONTROLROOM_JUDGE_MODEL, else openai/gpt-6.1-sol"
+if "--help" in args or not pos: print(USAGE); sys.exit(0 if "--help" in args else 2)
+try: j=json.loads(subprocess.run([SELF,"check",pos[0],"--json"],capture_output=True,text=True,timeout=300,cwd=ROOT,env=dict(os.environ,ROOT=ROOT)).stdout)   # check resolves number / path / board agent → brief, result, num
+except Exception: die(f"judge: brief not found for {pos[0]!r} (number, docs/briefs/NNN-*.md path, or an agent on the board)")
+BRIEF,RESULT,NUM=os.path.join(ROOT,j["brief"]),os.path.join(ROOT,j["result"]),j["num"]; OUT=os.path.join(BR,"results",f"{NUM}-judge.md"); rel=lambda p: os.path.relpath(p,ROOT)
+if os.path.realpath(OUT)==os.path.realpath(RESULT): OUT=os.path.join(BR,"results",f"{NUM}-judge-verdict.md")   # a brief named NNN-judge: its result IS NNN-judge.md — never overwrite the result
+os.path.exists(RESULT) or die(f"judge {NUM}: no result yet ({j['result']})")
+bt,rt=(open(p,errors="replace").read() for p in (BRIEF,RESULT))
+must=[re.sub(r"^\s*(?:[-*]|\d+\.)?\s*\**must:\**\s*","",l).strip() for l in bt.splitlines() if re.match(r"^\s*(?:[-*]|\d+\.)?\s*\**must:",l,re.I)]   # (019) brief grammar: a requirement line starting with `must:` is hard
+def nlines(p):
+    try: return sum(1 for _ in open(p,errors="replace"))
+    except Exception: return 1<<20
+linked=[]   # files the result links (markdown links + backticked repo paths) that exist under ROOT, ≤ 2k lines, not the brief/result/judge file; at most 8 — the only reads the judge may do
+for p in re.findall(r"\]\(([^)#\s]+)",rt)+re.findall(r"`((?:[\w.-]+/)+[\w.-]+)(?::\d+)?[^`]*`",rt):
+    a=os.path.normpath(os.path.join(ROOT,p.split(":")[0])); r=rel(a)
+    if a.startswith(ROOT+"/") and os.path.isfile(a) and a not in (BRIEF,RESULT,OUT) and r not in [x[0] for x in linked] and nlines(a)<=2000 and len(linked)<8: linked.append((r,nlines(a)))
+tp=os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(SELF)),"..","prompts","judge.md")); t=open(tp).read() if os.path.exists(tp) else die(f"template not found: {tp}")
+t=re.sub(r"\A---\n.*?\n---\n","",t,flags=re.S)   # drop the pi frontmatter; the CLI fills the placeholders
+for k,v in dict(ROOT=ROOT,num=NUM,brief_path=rel(BRIEF),result_path=rel(RESULT),must="; ".join(f"`{m}`" for m in must) or "none",linked=", ".join(f"`{r}` ({n} lines)" for r,n in linked) or "none (the result links no readable file)").items(): t=t.replace("{"+k+"}",v)
+def body(txt,cap=2000): ls=txt.splitlines(); return "\n".join(ls[:cap])+(f"\n[truncated — {len(ls)-cap} more lines not shown]" if len(ls)>cap else "")
+prompt=t+f"\n\n---\n## BRIEF `{rel(BRIEF)}`\n\n{body(bt)}\n\n---\n## RESULT `{rel(RESULT)}`\n\n{body(rt)}\n"
+model=opt("--model") or os.environ.get("CONTROLROOM_JUDGE_MODEL") or "openai/gpt-6.1-sol"; stamp=dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+if here:   # a Herdr worker `judge-NNN` reads the rendered brief and writes the judge file itself (for results too long to inline)
+    bp=os.path.join(ROOT,"logs","scratch",f"{NUM}-judge-brief.md"); os.makedirs(os.path.dirname(bp),exist_ok=True)
+    open(bp,"w").write(f"<!-- rendered by `controlroom judge {NUM} --here` {stamp} from prompts/judge.md — do not edit -->\n"+prompt+f"\n\n---\nYou were launched as the worker `judge-{NUM}`: write the report (with a `## Cost` line: `unknown — run in a pane`) to `{rel(OUT)}` yourself (overwrite), then reply `DONE judge-{NUM}`. Your `## Deviations` section and `DONE` sentinel are not needed — the report format above is the contract.")
+    r=subprocess.run([SELF,"launch",f"judge-{NUM}",rel(bp),f"judge: {NUM}"],cwd=ROOT,env=dict(os.environ,ROOT=ROOT,CONTROLROOM_LAUNCH_ARGS=f"--model {model}")); print(f"judge {NUM} → worker judge-{NUM} ({model}) · report lands at {rel(OUT)}"); sys.exit(r.returncode)   # the pane pi runs the judge model, not the room default
+env={k:v for k,v in os.environ.items() if not k.startswith("HERDR_")}   # not a Herdr agent: controlroom.ts / herdr-agent-state stay inactive (no heartbeat, no pane status flips)
+cmd=["perl","-e","alarm 300; exec @ARGV","--","pi","-p","--mode","json","--model",model,"--no-session","--no-skills","--no-prompt-templates","--no-context-files","--no-mcp","--tools","read","--thinking","low","Grade the result against the brief per the instructions above. Reply with the report only."]
+t0=time.time(); r=subprocess.run(cmd,input=prompt,capture_output=True,text=True,cwd=ROOT,env=env); secs=time.time()-t0
+use=dict(input=0,output=0,cacheRead=0,cacheWrite=0,cost=0.0); text=""; reads=0
+for l in r.stdout.splitlines():
+    try: e=json.loads(l)
+    except Exception: continue
+    if e.get("type")=="message_end" and e.get("message",{}).get("role")=="assistant":
+        u=e["message"].get("usage",{}); [use.__setitem__(k,use[k]+u.get(k,0)) for k in ("input","output","cacheRead","cacheWrite")]; use["cost"]+=(u.get("cost") or {}).get("total",0)
+        tx="\n".join(c.get("text","") for c in e["message"].get("content",[]) if c.get("type")=="text").strip(); text=tx or text; reads+=sum(1 for c in e["message"].get("content",[]) if c.get("type")=="toolCall")
+if not text: die(f"judge {NUM}: no report from pi ({'alarm 300 s' if r.returncode==142 or secs>=299 else 'rc '+str(r.returncode)}): {(r.stderr or r.stdout)[-400:].strip()}")
+vm=re.search(r"^#+\s*Verdict[^\n]*\n\s*\**\s*(ACCEPT WITH NOTES|ACCEPT|REJECT)",text,re.M|re.I); verdict=vm.group(1).upper() if vm else "NO VERDICT"
+mf=[re.sub(r"^must:\s*","",c[0],flags=re.I) for row in re.findall(r"^\|(.*)\|\s*$",text,re.M) for c in [[x.strip().strip("*`") for x in row.split("|")]] if len(c)>=3 and c[0].lower().startswith("must:") and any(x.upper()=="FAIL" for x in c[2:])]   # `must:` rows graded FAIL
+cost=f"${use['cost']:.4f}"; tok=f"{use['input']+use['cacheRead']+use['cacheWrite']:,} in · {use['output']:,} out (cache r {use['cacheRead']:,} / w {use['cacheWrite']:,})"
+head=f"# {NUM} — judge · {rel(BRIEF)} vs {rel(RESULT)}\n\n{stamp} · model `{model}` · `controlroom judge {NUM}` · {secs:.0f} s · {reads} file read(s)"+(f" · hard requirements: {len(must)}" if must else "")+"\n\n"
+tmp=OUT+".tmp"; open(tmp,"w").write(head+text.rstrip()+f"\n\n## Cost\n{tok} · {cost} · {model} · {secs:.0f} s\n"); os.replace(tmp,OUT)
+line=f"judge {NUM}: {verdict}"+(f" (must: FAIL ×{len(mf)})" if mf else "")+f" ({cost})"; open(os.environ["LOG"],"a").write(f"[{dt.datetime.now():%m-%d %H:%M}] {line} · {rel(OUT)}\n")
+rc=3 if mf else 0 if verdict=="ACCEPT" else 2 if verdict=="NO VERDICT" else 1
+if js: print(json.dumps(dict(num=NUM,verdict=verdict,must_fail=mf,cost=round(use["cost"],4),tokens=use,file=rel(OUT),model=model,secs=round(secs),rc=rc)))
+else: print(f"{line} · {rel(OUT)}"+("\n  must: FAIL — "+"; ".join(mf)+"\n  land refuses this row; land --force to accept" if mf else ""))
+sys.exit(rc)
+PY
+}
+# ---- end judge ----
 
 case "$CMD" in
   __lib__) return 0 2>/dev/null || exit 0 ;;   # sourced for verify()
@@ -1497,7 +1572,7 @@ print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status" and str
     [ -f "$PAUSED" ] && [ "$FORCE" = 0 ] && { echo "paused since $(sed -n 's/.*since=\([^ ]*\).*/\1/p' "$PAUSED") — controlroom play, or --force"; exit 3; }
     pane=$(herdr tab create --workspace "$WS" --cwd "$ROOT" --no-focus 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])'); sleep 3
     herdr tab rename "${pane/:p/:t}" "$LABEL" >/dev/null 2>&1
-    herdr agent start "$NAME" --kind pi --pane "$pane" --timeout 60000 >/dev/null 2>&1 || { echo "agent start failed in $pane"; exit 1; }
+    herdr agent start "$NAME" --kind pi --pane "$pane" --timeout 60000 ${CONTROLROOM_LAUNCH_ARGS:+-- $CONTROLROOM_LAUNCH_ARGS} >/dev/null 2>&1 || { echo "agent start failed in $pane"; exit 1; }   # (019) CONTROLROOM_LAUNCH_ARGS="--model …" → extra pi args (judge --here)
     sleep 2
     PRE="Read"; [ -f "$ROOT/docs/briefs/memory/LESSONS.md" ] && PRE="Read docs/briefs/memory/LESSONS.md first (project lessons; treat as rules). Then read"   # memory (004)
     NUM=$(basename "$BRIEF" | sed -n 's/^\([0-9]\{3\}\).*/\1/p'); NUM=${NUM:-NNN}   # (018) the result's sentinel is `DONE NNN`; `controlroom check` is the contract
@@ -1664,5 +1739,6 @@ for l in reversed(lines):
   check) check_py "$@" ;;   # controlroom check <NNN|brief.md|agent> [--json] [--help] — acceptance block + default checks + write-scope; exit 0/1/2
   steer) cr5 steer "$@" ;;   # controlroom steer <agent> "<text>" — herdr agent prompt + `reply ACK S###`; the tick checks the pane for the ACK within 10 min
   # ---- end acceptance (018) case arms ----
+  judge) judge_py "$@" ;;   # (019) controlroom judge <NNN|brief|agent> [--model id] [--here] [--json] — LLM grade → results/NNN-judge.md; exit 0 ACCEPT · 1 notes/reject · 3 must: FAIL · 2 none
   *) sed -n '2,/^set -u/{/^set -u/!p;}' "$0" ;;   # help = the header comment block, however long it grows
 esac
