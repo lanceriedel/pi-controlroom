@@ -321,7 +321,7 @@ One room on the laptop, one on the remote, **one repo**. Git is the hand-off, `S
 
 1. **Host tag** — every brief header carries `host: local | <label>`; the controller on that host launches, watches
    and integrates it (long jobs, pipelines, files-only research → remote; anything needing you → local).
-2. **Modes** — you say *"controller mode: remote"* / *"controller mode: local"*; the outgoing primary commits + pushes,
+2. **Modes** — preferred: **`controlroom mode remote <label>` / `controlroom mode local`** (deterministic: pull → refuse on a dirty board → MODE line + `## HANDOFF` block → signed commit, never bypassing signing → push → both controllers prompted with their roles; the tick moves the ★ / tab labels). The spoken form *"controller mode: remote"* still works: the outgoing primary commits + pushes,
    writes `MODE: <mode> since <time>` (and, when handing back, a `## HANDOFF <time>` block), and stops launching.
 3. **Board** — only the primary edits `STATUS.md`; a `host` column in the workers table; remote results that need a
    local-only step go under `## Pending publish (local)`; `logs/` and `AUTOMATIONS.md` are per host, never merged.

@@ -1781,6 +1781,68 @@ PY
   pause) cr5 pause "$@" ;;
   play) cr5 play ;;
   tick-install) tick_install ;;
+  mode)   # (020) controlroom mode local | remote [<label>] [--dry-run] — deterministic primary hand-off: pull → refuse on a dirty board → rewrite MODE line + HANDOFF block → signed commit (stop if signing fails; never bypass) → push → prompt both controllers with their roles. The tick then moves the ★ / tab labels.
+    [ "$HAS_GIT" = 1 ] || { echo "mode: needs a git repo (the hand-off is a commit)"; exit 1; }
+    TARGET=${1:-}; LABEL=${2:-}; DRY=0; for a in "$@"; do [ "$a" = "--dry-run" ] && DRY=1; done; [ "$LABEL" = "--dry-run" ] && LABEL=""
+    case "$TARGET" in local|remote) ;; *) echo "usage: controlroom mode local | remote [<machine-label>] [--dry-run]"; exit 2;; esac
+    ROOT="$ROOT" WS="$WS" TARGET="$TARGET" LABEL="$LABEL" DRY="$DRY" LOG="$LOG" python3 - <<'PY'
+import json,os,re,subprocess,sys,time,datetime
+root=os.environ["ROOT"]; ws=os.environ.get("WS",""); target=os.environ["TARGET"]; label=os.environ["LABEL"]; dry=os.environ["DRY"]=="1"; logf=os.environ["LOG"]
+ST=os.path.join(root,"docs/briefs/STATUS.md"); MC=os.path.join(root,"logs/.machines-cache.json"); CTRL=os.path.join(root,"logs/.controller")
+def sh(c,t=60,**k):
+    r=subprocess.run(c,capture_output=True,text=True,timeout=t,**k); return r.returncode,r.stdout,r.stderr
+def die(m): print("mode: "+m); sys.exit(1)
+rc,o,_=sh(["git","-C",root,"status","--porcelain","--","docs/briefs/STATUS.md"]); o.strip() and die("docs/briefs/STATUS.md has uncommitted changes — commit or discard them first (the hand-off must start from the shared board)")
+rc,o,e=sh(["git","-C",root,"pull","-q","--ff-only"],120); rc==0 or die("git pull --ff-only failed: "+(e.strip().splitlines() or ["?"])[-1])
+txt=open(ST).read(); m=re.search(r"^MODE:.*$",txt,re.M); cur=m.group(0) if m else "(no MODE line)"
+# who is who
+try: lag=json.loads(sh(["herdr","agent","list"],10)[1])["result"]["agents"]
+except Exception: lag=[]
+pid=open(CTRL).read().strip() if os.path.exists(CTRL) else ""
+lname=next((a.get("name") for a in lag if a.get("pane_id")==pid),None) or "controller"; lpane=pid
+try: mc=json.load(open(MC)).get("machines",{})
+except Exception: mc={}
+if target=="remote":
+    if not label:
+        if len(mc)==1: label=next(iter(mc))
+        else: die("several machines ("+", ".join(mc)+") — say which: controlroom mode remote <label>")
+    e=mc.get(label) or die(f"machine {label} unknown to this room (not in logs/.machines-cache.json)")
+    rag=[a for a in e.get("agents",[]) if a.get("name") and (a["name"].endswith("-remote") or a["name"].endswith("controller") or a["name"].startswith("controller"))]
+    rag or die(f"no controller agent found on {label} for this repo (expected a name like <x>-remote); start one first")
+    mm=re.search(r"controller\s*\(([^)]+)\)\s*:\**\s*`?([\w.-]+)",txt); named=mm.group(2) if mm and mm.group(1).lower()==label.lower() else None
+    rag.sort(key=lambda a:(a["name"]!=named, not a["name"].endswith("-remote")))   # the board's named remote controller first, then <x>-remote, then anything controller-ish (a stale gs-controller on the VM must not win)
+    rname=rag[0]["name"]; rpane=rag[0]["pane_id"]; rws=rag[0].get("workspace_id","?")
+else:
+    mm=re.search(r"controller\s*\(([^)]+)\)\s*:\**\s*`?([\w.-]+)",cur); label=label or (mm.group(1) if mm else (next(iter(mc)) if len(mc)==1 else ""))
+    rname=mm.group(2) if mm else "remote controller"; rpane=next((a["pane_id"] for a in (mc.get(label,{}).get("agents",[]) if label else []) if a.get("name")==rname),None)
+now=datetime.datetime.now().strftime("%Y-%m-%d %H:%M %Z").strip()
+prev=re.sub(r"^MODE:\s*","",cur)[:80] if m else "none"
+line=(f"MODE: remote since {now} (controller ({label}): {rname}, Herdr {rpane.split(':')[0] if rpane else '?'}; laptop {lname} {lpane} standby). Previous: {prev}" if target=="remote"
+      else f"MODE: local since {now} (controller: {lname}, Herdr workspace {ws} tab CONTROLLER; {label+' '+rname+' standby' if label else 'no remote'}). Previous: {prev}")
+# in-flight rows → HANDOFF block
+rows=[l for l in txt.split("## Workers",1)[-1].split("\n## ",1)[0].splitlines() if l.startswith("|") and not re.match(r"^\|[\s:|-]+\|?$",l)][1:]
+hand=f"\n## HANDOFF {now}\n- mode: {cur[6:60]} → **{target}{' ('+label+')' if label else ''}**, by `controlroom mode` (human request)\n- in flight ({len(rows)} rows): "+("; ".join(" · ".join(c.strip() for c in r.strip().strip('|').split('|')[1:4]) for r in rows) if rows else "none")+f"\n- new primary: pull, boot from files, arm your round wake · standby: cancel your round wake, do not launch or edit the board\n"
+new=(txt.replace(cur,line,1) if m else txt.replace("\n","\n"+line+"\n",1))
+# insert HANDOFF before '## How to use' if present, else append
+new=new.replace("\n## How to use",hand+"\n## How to use",1) if "\n## How to use" in new else new.rstrip("\n")+"\n"+hand
+print(line[:140]); print(hand.strip().splitlines()[1][:140])
+if dry: print("(dry-run: nothing written)"); sys.exit(0)
+open(ST,"w").write(new)
+rc,o,e=sh(["git","-C",root,"commit","-qm",f"control: controller mode: {target}{' ('+label+')' if label else ''} — {now}","--","docs/briefs/STATUS.md"],90)
+if rc!=0: sh(["git","-C",root,"checkout","--","docs/briefs/STATUS.md"]); die("commit failed (signing? plug in the YubiKey) — board left unchanged:\n"+(e.strip()[-300:]))
+rc,o,e=sh(["git","-C",root,"push","-q"],120); rc==0 or die("pushed nothing: "+(e.strip().splitlines() or ["?"])[-1]+" — the commit is local; fix and `git push`")
+open(logf,"a").write(f"[{time.strftime('%m-%d %H:%M')}] controller mode: {target}{' ('+label+')' if label else ''} — MODE line + HANDOFF committed and pushed\n")
+# tell both sides exactly what they are
+P="[controlroom · mode] "
+if target=="remote":
+    sh(["herdr","agent","prompt",lpane,P+f"You are now STANDBY (MODE: remote, primary = {rname} on {label}). Pull. Cancel your round wake(s) (controlroom automations → controlroom cancel A###). Do not launch, do not edit STATUS.md; answer the human if asked. Reply STANDBY-OK."],20)
+    rpane and sh(["herdr","--machine",label,"agent","prompt",rpane,P+f"You are now PRIMARY (MODE: remote). git pull, read docs/briefs/STATUS.md (## HANDOFF {now}), controlroom memory, controlroom automations; arm your round wake if none is armed (controlroom wake 2h ... --repeat 'every 2h' --prompt); integrate/land as usual; items needing the laptop go under '## Pending publish (local)'. Reply PRIMARY-OK with the in-flight count."],20)
+else:
+    sh(["herdr","agent","prompt",lpane,P+f"You are now PRIMARY (MODE: local). git pull, read docs/briefs/STATUS.md (## HANDOFF {now}), controlroom memory, controlroom automations; arm your round wake if none is armed; publish anything under '## Pending publish (local)'. Reply PRIMARY-OK with the in-flight count."],20)
+    (label and rpane) and sh(["herdr","--machine",label,"agent","prompt",rpane,P+f"You are now STANDBY (MODE: local, primary = {lname} on the laptop). git pull. Cancel your round wake(s). Do not launch, do not edit STATUS.md; stay resident. Reply STANDBY-OK."],20)
+print(f"mode → {target}{' ('+label+')' if label else ''} · committed + pushed · both controllers prompted · the tick moves the ★ within a minute")
+PY
+    ;;
   tick-uninstall) tick_uninstall ;;
   lastline)   # controlroom lastline <agent> — last meaningful pane line (used by the strip detail and by health's stuck? check)
     [ -n "${1:-}" ] || { echo "usage: controlroom lastline <agent>"; exit 2; }; tgt "$1"; herdr $M agent read "$N" --source visible --lines 50 --format text 2>/dev/null | python3 -c '
