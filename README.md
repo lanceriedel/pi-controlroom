@@ -317,14 +317,49 @@ starts one itself when no heartbeat is seen). **Worker-host checklist**: [docs/r
 ## Two controllers
 
 One room on the laptop, one on the remote, **one repo**. Git is the hand-off, `STATUS.md` is the shared board, and
-**one controller is primary at a time** — full protocol in [docs/two-controller-protocol.md](docs/two-controller-protocol.md):
+**one controller is primary at a time** — full protocol in [docs/two-controller-protocol.md](docs/two-controller-protocol.md).
 
+### Who is primary — reading the labels
+
+| Where you look | Primary | Standby |
+|---|---|---|
+| Herdr sidebar, workspace label | `graph-search ★` | `graph-search` |
+| Herdr tab of the controller pane | `★ CONTROLLER` | `CONTROLLER · standby` |
+| Status strip, `ROOMS` line | `dev002 ▶gs-remote ‹PRIMARY›` | `local ▶gs-controller` (no chip) |
+| Board, first line | `MODE: remote since <time> (controller (dev002): gs-remote, Herdr w2; laptop gs-controller wD:p1 standby)` | — |
+
+All four are derived from the board's `MODE:` line by the tick, every minute, on every host — so they can lag a switch by
+up to 60 s but never disagree with the board. Only the primary launches, lands and edits `STATUS.md`; the standby stays
+resident (warm, answers if you talk to it) but does not act. A room with no `MODE:` line is `local`-primary.
+
+### Changing the primary
+
+```bash
+controlroom mode remote dev002      # hand the room to the dev002 controller (e.g. before closing the laptop)
+controlroom mode local              # take it back on the laptop (e.g. in the morning)
+controlroom mode … --dry-run        # show the MODE line and HANDOFF block it would write
+```
+
+What the command does, in order — and it stops loudly at the first problem instead of improvising:
+1. `git pull --ff-only`; **refuses if `STATUS.md` has uncommitted changes** (the hand-off must start from the shared board).
+2. Rewrites the `MODE:` line — the new primary named from the board's `controller (<label>): …` field or the `<x>-remote`
+   agent on that machine — and appends a `## HANDOFF <time>` block: previous mode, in-flight rows, each side's duties.
+3. Commits **signed** (your git policy applies; if the YubiKey is absent it reverts the edit and tells you — it never
+   uses `gpgsign=false`), then pushes.
+4. Prompts **both** controllers with their exact roles: the new primary *pulls, boots from files, arms its round wake*;
+   the standby *pulls, cancels its round wake, does not launch or edit the board*, and replies `PRIMARY-OK` / `STANDBY-OK`.
+5. The next tick moves the `★`, the tab labels and the `‹PRIMARY›` chip.
+
+You can also just say *"controller mode: remote dev002"* / *"controller mode: local"* to a controller — its prompt tells it
+to run this same command rather than do the steps by hand.
+
+### The rest of the protocol
 1. **Host tag** — every brief header carries `host: local | <label>`; the controller on that host launches, watches
    and integrates it (long jobs, pipelines, files-only research → remote; anything needing you → local).
-2. **Modes** — preferred: **`controlroom mode remote <label>` / `controlroom mode local`** (deterministic: pull → refuse on a dirty board → MODE line + `## HANDOFF` block → signed commit, never bypassing signing → push → both controllers prompted with their roles; the tick moves the ★ / tab labels). The spoken form *"controller mode: remote"* still works: the outgoing primary commits + pushes,
-   writes `MODE: <mode> since <time>` (and, when handing back, a `## HANDOFF <time>` block), and stops launching.
-3. **Board** — only the primary edits `STATUS.md`; a `host` column in the workers table; remote results that need a
-   local-only step go under `## Pending publish (local)`; `logs/` and `AUTOMATIONS.md` are per host, never merged.
+2. **Board** — only the primary edits `STATUS.md`; remote results that need a local-only step (lancedocs, Drive, anything
+   with your identity) go under `## Pending publish (local)`; `logs/` and `AUTOMATIONS.md` are per host, never merged.
+3. **One recurring round per room** — the primary's 2 h `round:` wake; a standby has none. Never arm a second recurring
+   prompt loop.
 4. **Conflict rule** — never edit `STATUS.md` on both hosts between a push and a pull; if it happens, local wins.
 5. **Sync** — a remote with no stored git credential pulls/pushes with a short-lived token over stdin
    (`gh auth token | ssh <target> 'read -r T; git -c http.….extraheader=… pull --ff-only'`) — nothing persisted.

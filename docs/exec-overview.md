@@ -40,11 +40,12 @@ database, no new daemons. Installed in one line; a room is created by typing `/c
 
 ## What happens when the laptop closes
 
-**Short answer: hand the room to the VM first and nothing stops.** One sentence to the laptop controller —
-*"controller mode: remote"* — commits the board, marks `MODE: remote`, and stops local launching; the VM's controller
+**Short answer: hand the room to the VM first and nothing stops.** One command (or one sentence to the laptop controller) —
+`controlroom mode remote dev002` / *"controller mode: remote"* — commits the board, marks `MODE: remote`, and stops local launching; the VM's controller
 pulls and becomes primary: it runs the rounds, launches and lands briefs, keeps the status page current, and queues
-anything that needs your identity under *Pending publish (local)*. In the morning, *"controller mode: local"* hands it
-back with a written `HANDOFF` block. Below is why that works — there are two kinds of state.
+anything that needs your identity under *Pending publish (local)*. In the morning, `controlroom mode local` hands it
+back with a written `HANDOFF` block. You can see who is primary at a glance: the Herdr workspace label ends in `★`, the
+controller tab reads `★ CONTROLLER` (standby rooms: `CONTROLLER · standby`), and the strip's ROOMS line shows `‹PRIMARY›`. Below is why that works — there are two kinds of state.
 
 **State that is already safe (any room, any host):** the board, briefs, results, memory, automations ledger — all
 files, all in git. A controller or worker killed mid-sentence loses only its chat; a fresh agent re-reads the files
