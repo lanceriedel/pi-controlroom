@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-19 08:33 — Round A042 #1: this room empty, tree clean. New rooms since last round: gsd-reviews (wJ, Lance's OK2 inbox — 001 done: 6 prepared reviews + INBOX table). Six rooms alive on fable.
 - 11-18 08:05 — Round A039 #1/#2 (overnight turn aborted → re-prompted). 019 judge landed under its own gate (check 10/10, judge ran at land). Memory check next.
 - 11-17 15:56 — 018 landed (`check 018` → 9/9 on its own brief; land now enforces acceptance). 019 judge launched (wC:pS). Memory consolidated to budget.
 - 11-17 — Lance: make briefs enforceable. 018 (acceptance blocks, writes: scope, declared deviations, re-anchor after compaction, steer ACKs) launched; 019 (LLM judge at land) queued behind it. Round back to 2h.
