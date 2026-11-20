@@ -33,4 +33,4 @@ Kinds: `watch <agent>` (worker finished/blocked/stuck) · `play` (end a pause) �
 | A039 | wake | cancelled | 2026-11-18 09:38 | every 2h | 2 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h | wake 11-17 15:38 · cancelled 11-18 08:03 |
 | A040 | watch-path docs/briefs/results/018-acceptance-checks.md | cancelled | — | on-change | 2 | yes | 018 result changed: if it contains DONE 018, land it and launch docs/briefs/019-judge.md as worker judge | watch-path 11-17 15:38 · cancelled 11-17 15:54 |
 | A041 | watch judge | fired | — | — | 1 | no | integrate 019-judge when DONE | launch 11-17 15:54 |
-| A042 | wake | armed | 2026-11-20 08:00 | weekdays 08:00 | 1 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 11-18 08:03 |
+| A042 | wake | armed | 2026-11-23 08:00 | weekdays 08:00 | 2 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 11-18 08:03 |
