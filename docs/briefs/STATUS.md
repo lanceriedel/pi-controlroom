@@ -4,7 +4,6 @@
 ## Workers
 | pane | agent | brief | state | result |
 |---|---|---|---|---|
-| wC:pT | talk-deck | 020-talk-deck | working | — |
 
 ## Notes
 - 11-23 — Lance's talk (~50 engineers): 18-slide outline approved → 020 talk-deck launched (Marp → HTML/PDF + notes, docs/talks/controlroom-talk/). Round back to 2h.
@@ -55,6 +54,7 @@ Results land in `docs/briefs/results/`; chat is ephemeral, files are the memory.
 ## Landed
 | when | brief | worker | result | one-liner |
 |---|---|---|---|---|
+| 11-23 | 020-talk-deck | talk-deck | [results/020-talk-deck.md](results/020-talk-deck.md) | docs/talks/controlroom-talk/{deck.md,html,pdf,notes.md}; 18 slides, sources per number; slide 17 has [Open — Lance] for Tobi's workstations · judge: ACCEPT WITH NOTES |
 | 11-18 | 019-judge | judge | [results/019-judge.md](results/019-judge.md) | `controlroom judge`, prompts/judge.md, land = check → judge → move; live: 015 and 014 ACCEPT WITH NOTES (~$0.06 each, 30–45 s) · judge: ACCEPT |
 | 11-17 | 018-acceptance-checks | acceptance-checks | [results/018-acceptance-checks.md](results/018-acceptance-checks.md) | `check`, `writes:`/`read-only:`, default acceptance, land enforces, `steer` ACKs, re-anchor prompt; +117 lines |
 | 11-08 | 015-status-page | status-page | [results/015-status-page.md](results/015-status-page.md) | status-page CLI + md2html + launch/land hooks; Pages enabled, page pushed but 404 until `git rm docs/briefs/briefs` (stray symlink) |
@@ -100,3 +100,4 @@ Results land in `docs/briefs/results/`; chat is ephemeral, files are the memory.
 | status-page | 11-08 16:35 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-11-08T19-30-07-698Z_01a1bca3-b4d2-71b5-80f7-3f68bd77add7.jsonl` |
 | acceptance-checks | 11-17 15:54 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-11-17T22-38-04-471Z_01a1eba9-02b7-7004-bb80-7c49e1b2f869.jsonl` |
 | judge | 11-18 08:03 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-11-17T22-54-19-631Z_01a1ebb7-e3ef-746a-bbcd-d62ed64f0cb8.jsonl` |
+| talk-deck | 11-23 13:50 | integrated & landed | `pi --resume /Users/lanceriedel/.pi/agent/sessions/--Users-lanceriedel-src-github.com-lanceriedel-pi-controlroom--/2026-11-23T19-34-28-689Z_01a209e7-1451-70d9-958b-f13f091b3f4a.jsonl` |

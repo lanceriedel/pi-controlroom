@@ -1,0 +1,11 @@
+PASS  cr_has_section "$RESULT" "## Proof"
+PASS  cr_has_section "$RESULT" "## Deviations"
+PASS  cr_has_sentinel "$RESULT" 019
+PASS  test -f "$ROOT/prompts/judge.md"
+PASS  bash -n "$ROOT/bin/controlroom"
+PASS  test -f "$ROOT/docs/briefs/results/015-judge.md"
+PASS  default: result file exists
+PASS  default: `DONE 019` in result
+PASS  default: `## Deviations` section in result
+FAIL  write-scope: docs/briefs/results/020-talk-deck.md docs/talks/controlroom-talk/assets/check-019.txt docs/talks/controlroom-talk/assets/herdr-agent-list.raw.txt docs/talks/controlroom-talk/assets/status-pi-controlroom.txt docs/talks/controlroom-talk/deck.md — 5 path(s) in git status outside writes: bin/**, prompts/judge.md, README.md, skills/controlroom/SKILL.md, prompts/controller.md, docs/briefs/results/019*, docs/
+FAILED: 9 pass · 1 fail · brief docs/briefs/019-judge.md · result docs/briefs/results/019-judge.md

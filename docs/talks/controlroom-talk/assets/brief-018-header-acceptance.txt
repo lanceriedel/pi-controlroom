@@ -1,0 +1,9 @@
+# 018 — acceptance-checks: briefs become enforceable — acceptance blocks, write-scope, declared deviations, re-anchoring, steer ACKs
+
+host: local
+
+cr_has_sentinel "$RESULT" 018
+bash -n "$ROOT/bin/controlroom"
+"$ROOT/bin/controlroom" check --help >/dev/null
+```
+writes: bin/**, README.md, skills/controlroom/SKILL.md, prompts/controller.md, docs/briefs/results/018*

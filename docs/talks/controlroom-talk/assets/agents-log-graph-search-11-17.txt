@@ -1,0 +1,21 @@
+[11-17 08:27] overnight backlog serviced once: idle; nightly pull ok on dev002
+[11-17 08:28] A085 fired → prompted controller (wD:p1, was idle)
+[11-17 08:28] A085#19 dedup with 08:28 backlog round
+[11-17 08:40] A002 fired → prompted controller (wD:p1, was idle)
+[11-17 08:40] A002#71: idle; figures resized for Docs; L160
+[11-17 12:31] A085#23: idle; 089 (Cloud Run+IAP access) proposed to Lance
+[11-17 12:55] 088 exec flow graphic on warm gs-diagram
+[11-17 13:06] worker gs-diagram: DONE — results in docs/briefs/results/ — say ok in CONTROLLER
+[11-17 13:08] A073 watch-path — result changed: inspect files at the next objective round; deduplicate control
+[11-17 13:12] 088 landed; overview = single doc; brief → pointer
+[11-17 13:40] launched gs-research — docs/briefs/090-graph-search-landscape.md in wD:pS
+[11-17 14:01] worker gs-research: DONE — results in docs/briefs/results/ — say ok in CONTROLLER
+[11-17 14:02] A073 watch-path — result changed: inspect files at the next objective round; deduplicate control
+[11-17 14:11] A085 fired → prompted controller (wD:p1, was idle)
+[11-17 14:11] A085#25: 090 working
+[11-17 14:13] 090 landed+published; overview 6.10; 091 (F4+F1) proposed
+[11-17 15:11] A085 fired → prompted controller (wD:p1, was idle)
+[11-17 15:11] A085#26: idle
+[11-17 15:16] HANDOFF → dev002 gs-remote; laptop controller paused (shutdown)
+[11-17 15:19] laptop wakes A002/A085 cancelled; remote gs-remote (dev002 w2:pM) is primary
+[11-18 08:31] controller mode: local — laptop primary; gs-remote standby; wakes re-armed

@@ -1,0 +1,14 @@
+ CONTROL ROOM  Mon 13:35  pi-controlroom   (say "ok" in CONTROLLER to integrate · blocked = needs you)   tick ok 13:35:13
+   next A044 15:34
+ ROOMS  local ▶controller ‹PRIMARY› ⇄ dev002 ▶— ⇄ c4d ▶— · MODE: — (no MODE: line)
+        sync: HEAD 0bf2504 · ahead 0 · behind 0 (origin, last fetch)
+ AGENTS  (detail on — Ctrl+B D to toggle)  ▶ = controller
+▌ LOCAL · Lances-MacBook-Pro · 2 agents ───────────────────────────────────────────────────────────
+  ▶  idle     controller         wC:p1 ‹PRIMARY›   last write 0m · ctx 58%
+  │  working  talk-deck          wC:pT   020-talk-deck   last write 0m · ctx 8%   ✗ acceptance (4) t
+  …
+ TICK  last 13:35:13 · 1 actions
+ COST  controller $342.42 · workers $94.32 · today $105.14   (from pi session jsonl; tick refreshes working agents)
+ CTX   controller ctx 58% · compactions 2 · flushed — · extension alive
+ MEMORY  30 decisions · 30 lessons · newest 5.2d ago · 0 proposed · last dream 26.8d
+ AUTOMATIONS  1 armed · next A044 15:34 (in 2.0h) · fired today 1

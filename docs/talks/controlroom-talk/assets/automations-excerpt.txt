@@ -1,0 +1,6 @@
+|---|---|---|---|---|---|---|---|---|
+| A033 | wake | fired | 2026-11-06 04:57 | once | 1 | yes | 014 proof: reply TAKEN-OK | wake 11-06 04:57 |
+| A040 | watch-path docs/briefs/results/018-acceptance-checks.md | cancelled | — | on-change | 2 | yes | 018 result changed: if it contains DONE 018, land it and launch docs/briefs/019-judge.md as wor
+| A042 | wake | cancelled | 2026-11-24 08:00 | weekdays 08:00 | 3 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when wor
+| A043 | watch talk-deck | armed | — | — | 0 | no | integrate 020-talk-deck when DONE | launch 11-23 13:34 |
+| A044 | wake | armed | 2026-11-23 15:34 | every 2h | 0 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h | wake 11-23 13:34 |

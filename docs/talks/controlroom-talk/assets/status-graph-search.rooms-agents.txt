@@ -1,0 +1,14 @@
+ ROOMS  local ▶gs-controller ‹PRIMARY› ⇄ dev002 ▶gs-remote ⇄ c4d ▶— · MODE: local
+        sync: HEAD 4c3f929f · ahead 0 · behind 0 (origin, last fetch)
+ AGENTS  (detail on — Ctrl+B D to toggle)  ▶ = controller
+▌ LOCAL · Lances-MacBook-Pro · 16 agents ──────────────────────────────────────────────────────────
+  ▶  done     gs-controller      wD:p1 ‹PRIMARY›   last write 1.0h · ctx 68%
+  │  stalled  gs-keyauto         wD:p8   last write 13.9d · ctx 0%
+  │  stalled  gs-images          wD:pC   last write 10.0d · ctx 73%
+▌ DEV002 · reachable · 4 agents ───────────────────────────────────────────────────────────────────
+  ▶  idle     gs-remote          w2:pM
+  │  idle     gs-controller-dev002-old w2:p1
+--
+▌ C4D · reachable · 11 agents ─────────────────────────────────────────────────────────────────────
+  │  idle     gs-c4d             w1:p3
+  │  idle     gs-widen           w1:p6

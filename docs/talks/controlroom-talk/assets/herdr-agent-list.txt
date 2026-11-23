@@ -1,0 +1,9 @@
+$ herdr agent list | python3 -c '…name · status · pane · cwd…'     # 68 agents, 8 shown (2026-11-23 13:35)
+controller        idle     wC:p1   pi-controlroom
+talk-deck         working  wC:pT   pi-controlroom
+gs-controller     done     wD:p1   graph-search
+gs-curated        working  wD:pT   graph-search
+kumo-controller   idle     wF:p1   kumo-research
+upi-controller    working  wG:p1   upi-clustering-research
+ti-controller     done     wH:p1   taste-id-research
+gsd-controller    done     wJ:p1   gsd-reviews

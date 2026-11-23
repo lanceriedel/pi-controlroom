@@ -1,0 +1,59 @@
+ CONTROL ROOM  Mon 13:35  graph-search   (say "ok" in CONTROLLER to integrate · blocked = needs you)   tick ok 13:35:33
+   next A089 14:31
+ ROOMS  local ▶gs-controller ‹PRIMARY› ⇄ dev002 ▶gs-remote ⇄ c4d ▶— · MODE: local
+        sync: HEAD 4c3f929f · ahead 0 · behind 0 (origin, last fetch)
+ AGENTS  (detail on — Ctrl+B D to toggle)  ▶ = controller
+▌ LOCAL · Lances-MacBook-Pro · 16 agents ──────────────────────────────────────────────────────────
+  ▶  done     gs-controller      wD:p1 ‹PRIMARY›   last write 1.0h · ctx 68%
+  │  stalled  gs-keyauto         wD:p8   last write 13.9d · ctx 0%
+  │  stalled  gs-images          wD:pC   last write 10.0d · ctx 73%
+  │  stalled  gs-proof-eval      wD:pF   052 UNSTARTED /provider capacity   last write 11.9d · ctx 0
+  │  working  gs-curated         wD:pT   [094 curated edges → v_0_6](094-curated-edges-v06.md) (afte
+            → $ cd ~/src/github.com/shopify-playground/graph-search && scp -q logs/scratch/012-prese
+  │  done     gs-publish         wD:p5   last write 15.0d · ctx 5%
+  │  done     gs-c4dsetup        wD:p6   last write 14.0d · ctx 18%
+  │  done     gs-explore         wD:p7   last write 14.0d · ctx 36%
+  │  … +8 done  (gs-keyfix, gs-tpm, gs-pool, gs-eval-review, gs-synth, gs-codemap, gs-diagram, gs-re
+
+▌ DEV002 · reachable · 4 agents ───────────────────────────────────────────────────────────────────
+  ▶  idle     gs-remote          w2:pM
+  │  idle     gs-controller-dev002-old w2:p1
+  │  idle     gs-annui           w2:pJ
+  │  idle     gs-edge-off        w2:pK
+
+▌ C4D · reachable · 11 agents ─────────────────────────────────────────────────────────────────────
+  │  idle     gs-c4d             w1:p3
+  │  idle     gs-widen           w1:p6
+  │  idle     gs-haystack        w1:p7
+  │  idle     gs-packet          w1:p8
+  │  idle     gs-dense           w1:p9
+  │  idle     gs-upi-scale       w1:pF
+  │  idle     gs-seek            w1:pG
+  │  idle     gs-ann-control     w1:pH
+  │  idle     gs-rankfix         w1:pX
+  │  idle     gs-seek-review     w1:p0
+  │  idle     gs-upi-real        w1:p1G
+
+ TICK  last 13:35:33 · ok
+ COST  controller $651.21 · workers $165.68 · today $111.14   (from pi session jsonl; tick refreshes working agents)
+ CTX   controller ctx 68% · compactions 0 · flushed — · extension absent (tick fallback)
+ PIPELINES  (recent · running=yellow · aged out: done >24h, no-marker >6h, failed >7d · detail: up to 30)
+   no-marker demo-tunnel             3m ago  2026-11-23 13:32:07 ssh started pid 27454
+   no-marker 092-curated            20m ago  2026-11-23 13:15:20 094: build A (v_0_6) crowded brands out (Très Bien brands 9→
+   no-marker 093-curated-join-dev002  1.8h ago  [17:43:19 +  408.5s rss 3.4G] done
+   FAILED    proxy-key             8.0h ago  1795433749 APPLY FAILED minted id=303b5873 expiry=1795518000; index-serving-lanc
+   FAILED    proxy-key-launchd     8.0h ago  index-serving-lance-riedel-dev-002 id=f0fee352 expiry=1795118400 rotation-FAILED
+   … +9 aged-out log(s) hidden (done >24h · no-marker >6h · failed >7d) · controlroom gc --logs archives them
+ EVENTS (logs/agents.log)
+   [11-23 11:53] A073 watch-path — result changed: inspect files at the next objective round; deduplicate controller imports
+   [11-23 12:31] A089 fired → prompted controller (wD:p1, was done)
+   [11-23 12:31] A089#52: 093 working
+   [11-23 12:31] status page — pushed gh-pages
+   [11-23 12:33] 093 integrated (join rates); 094 edge build launched on gs-curated
+ MEMORY  74 decisions · 162 lessons · newest 2.3h ago · 0 proposed · last dream never   ⚠ over budget
+ AUTOMATIONS  2 armed · next A089 14:31 (in 55m) · fired today 10
+ WAITING ON LANCE
+   1. **Shapes of record (D012, implemented):** seeded ×2 + text-filter gate + graph cap 1×text; discovery = same with seed_weight=0. 015 confi
+   2. **Controller mode.** You're steering the dev002 room (remote `gs-controller`) directly this evening and it is launching/retiring/rounding
+   3. **Jonathan's team — revised ask** (002 made Q1/Q2 moot for the prototype): (a) is the broker→shard circuit-breaker-never-recovers after s
+ BRIEFS   094-curated-edges-v06 093-curated-join 092-curated-shop-graph-integration 090-graph-search-landscape 088-exec-request-flow-graphic 087-handoff-readability · +102 older
