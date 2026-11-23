@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-23 13:55 — Talk deck → Google Slides https://docs.google.com/presentation/d/1cA6Zcc8aOezlUhsgetYiH3rBTEFIg6JtTDhEkJuF5ts/edit (image slides from PPTX) + notes Doc https://docs.google.com/document/d/1LT5vDU7JGpN3bMNWN0vAjNDFfZHapS-JjrvVlpw19L0/edit, My Drive/lancedocs/talks. Edit path: deck.md → re-export.
 - 11-23 — Lance's talk (~50 engineers): 18-slide outline approved → 020 talk-deck launched (Marp → HTML/PDF + notes, docs/talks/controlroom-talk/). Round back to 2h.
 - 11-23 08:01 — Round A042 #3 (Mon): room empty, clean; six controllers alive; tick ok. Waiting on Lance: pi-host inputs (017).
 - 11-20 09:05 — Round A042 #2: room empty, clean; six controllers alive, tick ok. Waiting on Lance: pi-host inputs (017).
