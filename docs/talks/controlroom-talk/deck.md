@@ -14,6 +14,10 @@ style: |
   section pre code { font-size: inherit; color: #f2f2f2; font-weight: 500; }
   section.small pre, section.tiny pre { font-size: 17px; }
   section.strip pre { font-size: 15px; line-height: 1.25; padding: 10px 14px; }
+  section.brief pre { font-size: 14.5px; line-height: 1.3; padding: 12px 14px; }
+  section.brief table { font-size: 0.72em; }
+  section.brief .cols { display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; align-items: start; }
+  section.brief .cols p, section.brief .cols li { font-size: 0.82em; }
   section.strip table { font-size: 0.72em; }
   section :not(pre) > code { color: #ffd479; background: #0b0d12; padding: 0.05em 0.35em; border-radius: 4px; border: 1px solid #3a4250; }
   section pre .pass { color: #7ee787; font-weight: 700; }
@@ -154,55 +158,74 @@ This is the whole shape. One controller pi per room — I talk to it, it writes 
 
 ---
 
-<!-- _class: invert small -->
+<!-- _class: invert small brief -->
 
 # A brief is a contract
 
 <div class="cols">
 <div>
 
-`docs/briefs/018-acceptance-checks.md` (header + tail):
+**`graph-search/docs/briefs/005-graph-walk-operator.md`** — a real one (trimmed), the brief that produced the engine-native operator:
+
 ```text
-# 018 — acceptance-checks: briefs become enforceable …
-host: local
-…
-## Acceptance
-cr_has_section "$RESULT" "## Proof"
-cr_has_section "$RESULT" "## Deviations"
-cr_has_sentinel "$RESULT" 018
-bash -n "$ROOT/bin/controlroom"
-"$ROOT/bin/controlroom" check --help >/dev/null
-writes: bin/**, README.md, skills/controlroom/SKILL.md,
-        prompts/controller.md, docs/briefs/results/018*
+# 005 — The first index-serving change: a Java graph_walk
+#       operator (+ customData explanations), on the local stack
+host: dev002
+
+## Objective
+003 showed the walk works from a user Scripty with no engine
+change — with three engine gaps … 005 makes the first, deliberately
+small, index-serving change … built, run and measured on dev002
+against the 1 M product / 2 M edge collections from 004, so that
+when we propose it to Jonathan's team it comes with a working
+prototype and numbers.
+
+## Inputs
+- docs/design/003-graph-in-vantage.md §2 §4 §6 · 003-query-shapes §4.1
+- results/004-scale-real-data.md "What to do next" (1) — 005 owns it
+- index-serving @ main dc40053a1f (do not move); patterns to copy: …
+- live: graph_product/v_0_4 (1,046,870) · graph_edge/v_0_3 (2,049,392)
+
+## Constraints
+- L004 pin-shared-checkouts — branch off dc40053a1f, never pushed
+- L005 human-only-prerequisites — Cloudsmith creds: BLOCKED on <token>
+- Java change small and reviewable: ≤ ~400 lines; no shard/proto changes
+- Time-box 8 h · log START/END rc= per step · partial result per phase
+
+## Deliverables
+- branch + exported diff with a PR-style README · design doc · side-by-sides
+- results/005-graph-walk-operator.md ≤ 12 bullets + metrics, "DONE 005"
 ```
 
 </div>
 <div>
 
-`controlroom check 019` (live, 11-23):
-```text
-PASS  cr_has_section "$RESULT" "## Proof"
-PASS  cr_has_section "$RESULT" "## Deviations"
-PASS  cr_has_sentinel "$RESULT" 019
-PASS  test -f "$ROOT/prompts/judge.md"
-PASS  bash -n "$ROOT/bin/controlroom"
-PASS  test -f "$ROOT/docs/briefs/results/015-judge.md"
-PASS  default: result file exists
-PASS  default: `DONE 019` in result
-PASS  default: `## Deviations` section in result
-FAIL  write-scope: docs/talks/… — 5 path(s) outside writes:
-FAILED: 9 pass · 1 fail
-```
-<span class="dim">The FAIL is this deck being built in the same repo (L048: write-scope is repo-global).</span>
+**Anatomy** — every brief has the same six parts:
+
+| part | what it does for the worker |
+|---|---|
+| `host:` | which room launches it (laptop · dev002 · c4d) |
+| **Objective** | the *why*, with the prior results it builds on |
+| **Inputs** | exact paths, pinned shas, live collection names |
+| **Constraints** | the room's **memory lines quoted verbatim** (L004, L005 …), scope, time-box, logging |
+| **Deliverables** | files, sizes, the `DONE NNN` sentinel |
+| `## Acceptance` · `writes:` | shell checks + allowed paths — **enforced at `land`** (018) |
+
+**What came back** (landed 11-09): Java `graph_walk` operator + `customData` explanations — 1-round parity with the Scripty walk, 2-round lifts brand-path **42 → 63 %**, 17 / 24 ms p50/p95; **+1,054 lines** on an index-serving branch, **13/13 tests**.
+
+**Then the gate:** `controlroom check 005` (sections · sentinel · write-scope) → `controlroom judge 005` (read-only `pi -p`, requirement by requirement, quoted evidence) → `ACCEPT` · `ACCEPT WITH NOTES` · `REJECT`; a `must:` line failing blocks `land`.
 
 </div>
 </div>
-
-`land` runs `check`, then **`judge`** — a read-only `pi -p` grading requirement by requirement:
-`[11-17 16:08] judge 015: ACCEPT WITH NOTES ($0.0664) · docs/briefs/results/015-judge.md`
 
 <!--
-Since last week a brief is enforceable, not just instructive. Two optional pieces: a `writes:` line — the only paths the worker may touch — and an Acceptance block: shell lines, exit zero is pass. `controlroom check` runs them plus defaults: result exists, ends with DONE, has a Deviations section. On the right is the live run against brief 019 from this morning. Nine pass, one fail — and the fail is honest: the write-scope check is repo-global, so it caught *this deck* being built in the same repo. Then `land` runs the judge: a short read-only pi run that grades the result against the brief. Advisory, unless a line starts with `must:`. About six cents per review.
+This is a real brief, not a toy: the one that got graph-search its first engine-native change. Read the shape, not the
+content. Objective says why and what it builds on. Inputs are exact — paths, a pinned sha, collection names with counts —
+because a worker that has to guess will guess wrong. Constraints start with the room's memory lines quoted verbatim: the
+lesson about pinned checkouts and the one about credentials only I have; so the worker inherits what the room already
+learned. Deliverables name files and the sentinel. Since last week there's a seventh part: an Acceptance block and a
+writes: line, and `land` refuses a result that fails them; then a cheap judge grades the result against the brief with
+quotes. The worker came back with an operator, numbers, and tests — in eight hours on a VM.
 -->
 
 ---
