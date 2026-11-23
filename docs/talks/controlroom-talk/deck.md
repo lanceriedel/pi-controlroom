@@ -16,6 +16,7 @@ style: |
   section.strip pre { font-size: 15px; line-height: 1.25; padding: 10px 14px; }
   section.brief pre { font-size: 14.5px; line-height: 1.3; padding: 12px 14px; }
   section.brief table { font-size: 0.72em; }
+  section.brief .cols > div:last-child pre { font-size: 14px; }
   section.brief .cols { display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; align-items: start; }
   section.brief .cols p, section.brief .cols li { font-size: 0.82em; }
   section.strip table { font-size: 0.72em; }
@@ -211,9 +212,20 @@ prototype and numbers.
 | **Deliverables** | files, sizes, the `DONE NNN` sentinel |
 | `## Acceptance` · `writes:` | shell checks + allowed paths — **enforced at `land`** (018) |
 
-**What came back** (landed 11-09): Java `graph_walk` operator + `customData` explanations — 1-round parity with the Scripty walk, 2-round lifts brand-path **42 → 63 %**, 17 / 24 ms p50/p95; **+1,054 lines** on an index-serving branch, **13/13 tests**.
+**What came back** (landed 11-09): Java `graph_walk` operator + `customData` explanations — 2-round lifts brand-path **42 → 63 %**, 17 / 24 ms p50/p95; **+1,054 lines**, **13/13 tests**.
 
-**Then the gate:** `controlroom check 005` (sections · sentinel · write-scope) → `controlroom judge 005` (read-only `pi -p`, requirement by requirement, quoted evidence) → `ACCEPT` · `ACCEPT WITH NOTES` · `REJECT`; a `must:` line failing blocks `land`.
+**The contract part** — 005 predates it (11-08); written today it would end with:
+
+```text
+## Acceptance
+cr_has_section "$RESULT" "## Metrics"      # G-walk vs G-walk-op
+cr_has_sentinel "$RESULT" 005
+test -f "$ROOT/src/graph_vantage/patches/005-*.diff"
+cr_max_lines "$RESULT" 60
+writes: src/graph_vantage/**, docs/design/005*, results/005*
+```
+
+`land` → `check` → `judge` (read-only `pi -p`, quoted evidence) → `ACCEPT` / `NOTES` / `REJECT`.
 
 </div>
 </div>
