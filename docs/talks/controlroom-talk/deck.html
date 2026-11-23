@@ -537,7 +537,7 @@ footer { font-size: 14px; color: #6b7480; }
 <p class="take">The worker gets the <em>why</em>, exact inputs, the room's lessons verbatim, and the checks its result must pass.</p>
 <div class="cols">
 <div>
-<p><strong>A real one, trimmed and re-wrapped</strong> — graph-search <code>005-graph-walk-operator.md</code>, the brief that produced the engine-native operator:</p>
+<p><strong>An example brief</strong> — graph-search's <code>005-graph-walk-operator.md</code>, condensed to one screen (the brief that produced the engine-native operator):</p>
 <pre is="marp-pre" data-auto-scaling="downscale-only"><code class="language-text"># 005 — a Java graph_walk operator inside index-serving
 host: dev002
 ## Objective    003 showed the walk works with no engine change …
@@ -550,6 +550,10 @@ host: dev002
                 Java ≤ ~400 lines · time-box 8 h · partial result per phase
 ## Deliverables branch + diff + PR-style README · design · side-by-sides
                 results/005-graph-walk-operator.md ≤ 12 bullets, &quot;DONE 005&quot;
+## Acceptance   cr_has_section &quot;$RESULT&quot; &quot;## Metrics&quot;
+                cr_has_sentinel &quot;$RESULT&quot; 005
+                test -f &quot;$ROOT/patches/005-graph-walk.diff&quot;
+writes:         src/graph_vantage/**, results/005*
 </code></pre>
 <p><strong>What came back</strong> (landed 11-09): the Java <code>graph_walk</code> operator — brand-path lift <strong>42 → 63 %</strong>, <strong>13/13 tests</strong>.</p>
 </div>
@@ -588,14 +592,7 @@ host: dev002
 </tr>
 </tbody>
 </table>
-<p><strong>The contract part</strong> — 005 predates Acceptance (11-08); written today it would end with:</p>
-<pre is="marp-pre" data-auto-scaling="downscale-only"><code class="language-text">## Acceptance
-cr_has_section &quot;$RESULT&quot; &quot;## Metrics&quot;
-cr_has_sentinel &quot;$RESULT&quot; 005
-test -f &quot;$ROOT/patches/005-graph-walk.diff&quot;
-writes: src/graph_vantage/**, results/005*
-</code></pre>
-<p><code>land</code> runs <code>check</code> (those shell lines), then <code>judge</code> — a read-only pi that grades the result against the brief, quoting evidence → <code>ACCEPT</code> / <code>NOTES</code> / <code>REJECT</code>.</p>
+<p><strong>At <code>land</code>:</strong> <code>check</code> runs the Acceptance lines and the write-scope, then <code>judge</code> — a read-only pi that grades the result against the brief, quoting evidence → <code>ACCEPT</code> / <code>NOTES</code> / <code>REJECT</code>.</p>
 </div>
 </div>
 <footer>Running a control room · Lance Riedel · Nov 2026 · internal</footer>

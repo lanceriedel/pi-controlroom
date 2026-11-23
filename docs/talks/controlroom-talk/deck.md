@@ -180,7 +180,7 @@ This is the whole shape. A room is one project. One controller pi per room — I
 <div class="cols">
 <div>
 
-**A real one, trimmed and re-wrapped** — graph-search `005-graph-walk-operator.md`, the brief that produced the engine-native operator:
+**An example brief** — graph-search's `005-graph-walk-operator.md`, condensed to one screen (the brief that produced the engine-native operator):
 
 ```text
 # 005 — a Java graph_walk operator inside index-serving
@@ -195,6 +195,10 @@ host: dev002
                 Java ≤ ~400 lines · time-box 8 h · partial result per phase
 ## Deliverables branch + diff + PR-style README · design · side-by-sides
                 results/005-graph-walk-operator.md ≤ 12 bullets, "DONE 005"
+## Acceptance   cr_has_section "$RESULT" "## Metrics"
+                cr_has_sentinel "$RESULT" 005
+                test -f "$ROOT/patches/005-graph-walk.diff"
+writes:         src/graph_vantage/**, results/005*
 ```
 
 **What came back** (landed 11-09): the Java `graph_walk` operator — brand-path lift **42 → 63 %**, **13/13 tests**.
@@ -211,17 +215,7 @@ host: dev002
 | **Deliverables** | files, sizes, the `DONE NNN` sentinel |
 | **Acceptance** · `writes:` | shell checks + allowed paths — **enforced at `land`** since 11-17 |
 
-**The contract part** — 005 predates Acceptance (11-08); written today it would end with:
-
-```text
-## Acceptance
-cr_has_section "$RESULT" "## Metrics"
-cr_has_sentinel "$RESULT" 005
-test -f "$ROOT/patches/005-graph-walk.diff"
-writes: src/graph_vantage/**, results/005*
-```
-
-`land` runs `check` (those shell lines), then `judge` — a read-only pi that grades the result against the brief, quoting evidence → `ACCEPT` / `NOTES` / `REJECT`.
+**At `land`:** `check` runs the Acceptance lines and the write-scope, then `judge` — a read-only pi that grades the result against the brief, quoting evidence → `ACCEPT` / `NOTES` / `REJECT`.
 
 </div>
 </div>
