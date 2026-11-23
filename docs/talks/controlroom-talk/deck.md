@@ -10,9 +10,17 @@ style: |
   section h2 { font-size: 1.1em; }
   section.small { font-size: 18px; }
   section.tiny { font-size: 15px; }
-  section pre { font-size: 15px; line-height: 1.3; background: #0e1116; }
-  section pre code { font-size: inherit; }
-  section table { font-size: 0.85em; }
+  section pre { font-size: 19px; line-height: 1.35; background: #0b0d12; color: #f2f2f2; border: 1px solid #3a4250; border-radius: 6px; padding: 14px 18px; }
+  section pre code { font-size: inherit; color: #f2f2f2; font-weight: 500; }
+  section.small pre, section.tiny pre { font-size: 17px; }
+  section.strip pre { font-size: 15px; line-height: 1.25; padding: 10px 14px; }
+  section.strip table { font-size: 0.72em; }
+  section :not(pre) > code { color: #ffd479; background: #0b0d12; padding: 0.05em 0.35em; border-radius: 4px; border: 1px solid #3a4250; }
+  section pre .pass { color: #7ee787; font-weight: 700; }
+  section pre .fail { color: #ff7b72; font-weight: 700; }
+  section pre .dim { color: #9aa4b2; }
+  section table { font-size: 0.78em; line-height: 1.15; }
+  section table td, section table th { padding: 0.25em 0.5em; }
   section.tiny table { font-size: 0.95em; }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
   .cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
@@ -199,7 +207,7 @@ Since last week a brief is enforceable, not just instructive. Two optional piece
 
 ---
 
-<!-- _class: invert tiny -->
+<!-- _class: invert tiny strip -->
 
 # The board & the strip
 
@@ -293,12 +301,12 @@ Memory is two files, decisions and lessons, one line each, with a hard grammar: 
 `docs/briefs/AUTOMATIONS.md` — the ledger *is* the state; the tick reads and rewrites it every minute.
 
 ```text
-| id   | kind                 | state     | next (local)     | repeat         | fired | prompt? | instruction
-| A033 | wake                 | fired     | 2026-11-06 04:57 | once           | 1     | yes | 014 proof: reply TAKEN-OK
-| A040 | watch-path results/018-acceptance-checks.md | cancelled | — | on-change | 2 | yes | 018 result changed: if it contains DONE 018, land it and launch 019 …
-| A042 | wake                 | cancelled | 2026-11-24 08:00 | weekdays 08:00 | 3     | yes | round: … daily while the room is idle — re-arm the 2h round when work is launched
-| A043 | watch talk-deck      | armed     | —                | —              | 0     | no  | integrate 020-talk-deck when DONE
-| A044 | wake                 | armed     | 2026-11-23 15:34 | every 2h       | 0     | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h
+id    kind                    state      next (local)  repeat          prompt?  instruction
+A033  wake                    fired      11-06 04:57   once            yes      014 proof: reply TAKEN-OK
+A040  watch-path results/018  cancelled  —             on-change       yes      018 result changed: if it contains DONE …
+A042  wake                    cancelled  11-24 08:00   weekdays 08:00  yes      round: … daily while the room is idle — …
+A043  watch talk-deck         armed      —             —               no       integrate 020-talk-deck when DONE
+A044  wake                    armed      11-23 15:34   every 2h        yes      round: integrate DONE workers, controlro…
 ```
 
 **The round wake** (the controller arms it itself at Boot, D020): `round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h`
