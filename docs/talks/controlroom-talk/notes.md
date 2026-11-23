@@ -76,6 +76,7 @@ What's next. The honest gap is still the controller: it sleeps with the lid unle
 
 Three things to take away. Files are the protocol — if it isn't in a file it didn't happen, and that's what lets a fresh agent or a colleague pick the room up cold. Make the brief a contract: a writes line, an acceptance block, a judge at land, so deviations are declared rather than discovered. And only blocked needs you — the controller rounds every two hours, lands what's done, and a VM room carries on while the laptop is shut. Install is one line; a room is created by typing slash-controller in a pane. The exec overview, the live status page and this deck with every source are all in the repo. Questions.
 ## Sources
+- Slide 6 strip: **illustrative composite** for graph-search (real agent names/briefs/states from `logs/agents.log` and STATUS 11-17; times, ctx %, costs combined into one moment — say so if asked). Slide 7 ("Reading the strip") is the legend split out of slide 6.
 - Slide 5 brief excerpt: `~/src/github.com/shopify-playground/graph-search/docs/briefs/005-graph-walk-operator.md` (trimmed); outcome line: graph-search `docs/status/preamble.md` row 005 (landed 11-09). — every number on a slide, with where it came from
 
 All paths are relative to `~/src/github.com/lanceriedel/pi-controlroom` unless noted. Captures were taken 2026-11-23 13:35 CST and are saved verbatim in `assets/`. "Brief 020" = `docs/briefs/020-talk-deck.md` (facts the controller pre-computed and handed to this deck's worker).

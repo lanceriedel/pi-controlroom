@@ -13,13 +13,17 @@ style: |
   section pre { font-size: 19px; line-height: 1.35; background: #0b0d12; color: #f2f2f2; border: 1px solid #3a4250; border-radius: 6px; padding: 14px 18px; }
   section pre code { font-size: inherit; color: #f2f2f2; font-weight: 500; }
   section.small pre, section.tiny pre { font-size: 17px; }
-  section.strip pre { font-size: 15px; line-height: 1.25; padding: 10px 14px; }
+  section.strip pre { font-size: 15.5px; line-height: 1.28; padding: 12px 16px; }
   section.brief pre { font-size: 14.5px; line-height: 1.3; padding: 12px 14px; }
   section.brief table { font-size: 0.72em; }
   section.brief .cols > div:last-child pre { font-size: 14px; }
   section.brief .cols { display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; align-items: start; }
   section.brief .cols p, section.brief .cols li { font-size: 0.82em; }
-  section.strip table { font-size: 0.72em; }
+  section.strip table { font-size: 0.66em; }
+  section.legend table { font-size: 0.82em; line-height: 1.25; }
+  section.legend table td, section.legend table th { padding: 0.3em 0.5em; }
+  section.legend .cols { gap: 36px; align-items: start; }
+  section.strip table td, section.strip table th { padding: 0.15em 0.4em; }
   section :not(pre) > code { color: #ffd479; background: #0b0d12; padding: 0.05em 0.35em; border-radius: 4px; border: 1px solid #3a4250; }
   section pre .pass { color: #7ee787; font-weight: 700; }
   section pre .fail { color: #ff7b72; font-weight: 700; }
@@ -246,22 +250,42 @@ quotes. The worker came back with an operator, numbers, and tests — in eight h
 
 # The board & the strip
 
-`NO_COLOR=1 controlroom status` · pi-controlroom · 11-23 13:35 (trimmed; full capture in `assets/`)
+`NO_COLOR=1 controlroom status` · graph-search, three hosts, 14 agents — **illustrative composite** of a busy afternoon (real names, states and layout from the 11-17 logs; times/costs combined for one picture)
 ```text
- CONTROL ROOM  Mon 13:35  pi-controlroom   (say "ok" in CONTROLLER to integrate · blocked = needs you)   tick ok 13:35:13
-   next A044 15:34
- ROOMS  local ▶controller ‹PRIMARY› ⇄ dev002 ▶— ⇄ c4d ▶— · MODE: — (no MODE: line)
-        sync: HEAD 0bf2504 · ahead 0 · behind 0 (origin, last fetch)
+ CONTROL ROOM  Mon 16:42  graph-search   (say "ok" in CONTROLLER to integrate · blocked = needs you)   tick ok 16:42:07
+   next A089 18:31
+ ROOMS  local ▶gs-controller ⇄ dev002 ▶gs-remote ‹PRIMARY› ⇄ c4d ▶gs-c4d · MODE: remote · sync: HEAD 4c3f929f · ahead 0 · behind 0
  AGENTS  (detail on — Ctrl+B D to toggle)  ▶ = controller
-▌ LOCAL · Lances-MacBook-Pro · 2 agents ──────────────────────────────────────────────────────
-  ▶  idle     controller         wC:p1 ‹PRIMARY›   last write 0m · ctx 58%
-  │  working  talk-deck          wC:pT   020-talk-deck   last write 0m · ctx 8%   ✗ acceptance (4)
- TICK  last 13:35:13 · 1 actions
- COST  controller $342.42 · workers $94.32 · today $105.14   (from pi session jsonl)
- CTX   controller ctx 58% · compactions 2 · flushed — · extension alive
- MEMORY  30 decisions · 30 lessons · newest 5.2d ago · 0 proposed · last dream 26.8d
- AUTOMATIONS  1 armed · next A044 15:34 (in 2.0h) · fired today 1
+ ▌ LOCAL · Lances-MacBook-Pro · 3 agents ─────────────────────────────────────────────────────────────────────────────
+   ▶ idle     gs-controller      wD:p1   standby            last write 4m  · ctx 31%
+   │ working  gs-images          wD:pC   023-images-cards   last write 1m  · ctx 44%
+   │ blocked  gs-proof-eval      wD:pF   039-cross-track C  last write 12m · ctx 61%   NEEDS YOU: judge cache lease?
+ ▌ DEV002 · reachable · 6 agents ───────────────────────────────────────────────────────────────────────────────────────
+   ▶ idle     gs-remote          w2:pM   ‹PRIMARY›          last write 2m  · ctx 18%
+   │ working  gs-fix             w2:pC   014-fixes-iterate  last write 0m  · ctx 52%
+   │ working  gs-scale7m         w2:p9   007-scale-7m       last write 23m · ctx 37%   stuck?
+   │ done     gs-judge           w2:p5   010-seed-free      last write 1.1h · ctx 29%  ✓ acceptance · ⚖ ACCEPT
+   │ done     gs-graph           w2:p4   003-graph-in-vantage  last write 2.3h          ✓ acceptance
+   │ idle     gs-vantage         w2:p3   —                  last write 6.0h
+ ▌ C4D · reachable · 5 agents ───────────────────────────────────────────────────────────────────────────────────────────
+   ▶ idle     gs-c4d             w1:p3   standby            last write 9m
+   │ working  gs-widen           w1:p6   015-widen-eval     last write 0m  · ctx 48%
+   │ working  gs-haystack        w1:p7   016-haystack-c4d   last write 3m  · ctx 71%
+   │ working  gs-dense           w1:p9   039-native-prf     last write 1m  · ctx 55%
+   │ done     gs-publish         w1:p4   006-publish-status last write 1.2d          ✓ acceptance · ⚖ NOTES
+ TICK  last 16:42:07 · 2 actions        COST  controller $27.35 · workers $411.80 · today $63.10
+ MEMORY  74 decisions · 162 lessons · 0 proposed · last dream never      AUTOMATIONS  5 armed · next A089 18:31 (in 1.8h) · fired today 9
 ```
+
+
+<!--
+The board is STATUS.md; the strip is the board plus live state, refreshed every fifteen seconds in a pane under the controller. Above is a real capture from this room, trimmed. Top down: the header says the tick is alive and when the next wake is. ROOMS shows one controller per host and which one is primary. AGENTS is grouped by host; the arrow marks controllers; detail mode adds last write, context percent and the acceptance chip — you can see this worker failing acceptance while it's still working, which is correct. Then cost in detail only, memory counts against budget, and automations. One rule from the legend: red means a human is needed. Everything else, the controller handles.
+-->
+
+---
+<!-- _class: invert legend -->
+
+# Reading the strip
 
 <div class="cols">
 <div>
@@ -289,7 +313,7 @@ quotes. The worker came back with an operator, numbers, and tests — in eight h
 </div>
 
 <!--
-The board is STATUS.md; the strip is the board plus live state, refreshed every fifteen seconds in a pane under the controller. Above is a real capture from this room, trimmed. Top down: the header says the tick is alive and when the next wake is. ROOMS shows one controller per host and which one is primary. AGENTS is grouped by host; the arrow marks controllers; detail mode adds last write, context percent and the acceptance chip — you can see this worker failing acceptance while it's still working, which is correct. Then cost in detail only, memory counts against budget, and automations. One rule from the legend: red means a human is needed. Everything else, the controller handles.
+The legend. Three things to remember: the header line tells you if the room is alive (tick ok, or a red NO TICK); every host gets its own group with its controller marked; and of all the colours, red *blocked* is the only one that needs a human — everything else is the room working or waiting on itself.
 -->
 
 ---
