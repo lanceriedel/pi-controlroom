@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-23 08:01 — Round A042 #3 (Mon): room empty, clean; six controllers alive; tick ok. Waiting on Lance: pi-host inputs (017).
 - 11-20 09:05 — Round A042 #2: room empty, clean; six controllers alive, tick ok. Waiting on Lance: pi-host inputs (017).
 - 11-19 08:33 — Round A042 #1: this room empty, tree clean. New rooms since last round: gsd-reviews (wJ, Lance's OK2 inbox — 001 done: 6 prepared reviews + INBOX table). Six rooms alive on fable.
 - 11-18 08:05 — Round A039 #1/#2 (overnight turn aborted → re-prompted). 019 judge landed under its own gate (check 10/10, judge ran at land). Memory check next.
