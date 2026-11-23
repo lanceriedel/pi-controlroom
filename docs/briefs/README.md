@@ -10,6 +10,7 @@ Newest first; the last 8 are shown, older briefs are folded below.
 
 | Brief | Stream | Needs external resources? |
 |---|---|---|
+| [020-talk-deck](020-talk-deck.md) | Lance's ~25-min talk for ~50 engineers: 18 Marp slides + speaker notes, real captures, sources per number | npx marp-cli |
 | [019-judge](019-judge.md) | LLM completion gate at land: grade result vs brief with quoted evidence; `must:` requirements block; after 018 | pi -p (cheap model) |
 | [018-acceptance-checks](018-acceptance-checks.md) | `## Acceptance` blocks + `writes:` scope + mandatory Deviations + re-anchor prompt + steer ACKs; `check`, `land` enforces | no |
 | [015-status-page](015-status-page.md) | `controlroom status-page [--publish]`: project page from STATUS/health with brief links → GitHub Pages + publishers.sh; auto after launch/land | gh API (Pages) |

@@ -4,8 +4,10 @@
 ## Workers
 | pane | agent | brief | state | result |
 |---|---|---|---|---|
+| wC:pT | talk-deck | 020-talk-deck | working | — |
 
 ## Notes
+- 11-23 — Lance's talk (~50 engineers): 18-slide outline approved → 020 talk-deck launched (Marp → HTML/PDF + notes, docs/talks/controlroom-talk/). Round back to 2h.
 - 11-23 08:01 — Round A042 #3 (Mon): room empty, clean; six controllers alive; tick ok. Waiting on Lance: pi-host inputs (017).
 - 11-20 09:05 — Round A042 #2: room empty, clean; six controllers alive, tick ok. Waiting on Lance: pi-host inputs (017).
 - 11-19 08:33 — Round A042 #1: this room empty, tree clean. New rooms since last round: gsd-reviews (wJ, Lance's OK2 inbox — 001 done: 6 prepared reviews + INBOX table). Six rooms alive on fable.
