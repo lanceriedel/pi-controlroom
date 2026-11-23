@@ -4,6 +4,7 @@
 ## Workers
 | pane | agent | brief | state | result |
 |---|---|---|---|---|
+| wC:pV | talk-edit | 021-talk-edit | working | — |
 
 ## Notes
 - 11-23 13:55 — Talk deck → Google Slides https://docs.google.com/presentation/d/1cA6Zcc8aOezlUhsgetYiH3rBTEFIg6JtTDhEkJuF5ts/edit (image slides from PPTX) + notes Doc https://docs.google.com/document/d/1LT5vDU7JGpN3bMNWN0vAjNDFfZHapS-JjrvVlpw19L0/edit, My Drive/lancedocs/talks. Edit path: deck.md → re-export.
