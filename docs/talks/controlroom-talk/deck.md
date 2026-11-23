@@ -15,6 +15,13 @@ style: |
   section pre { font-size: 19px; line-height: 1.35; background: #0b0d12; color: #f2f2f2; border: 1px solid #3a4250; border-radius: 6px; padding: 14px 18px; }
   section pre code { font-size: inherit; color: #f2f2f2; font-weight: 500; }
   section.small pre, section.tiny pre { font-size: 17px; }
+  section.briefwide pre { font-size: 12.6px; line-height: 1.24; padding: 8px 10px; margin: 0; }
+  section.briefwide h1 { font-size: 1.3em; margin-bottom: 0.1em; }
+  section.briefwide .take { font-size: 0.85em; }
+  section.briefwide .brief2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+  section.briefwide .take { margin-bottom: 6px; }
+  section.anatomy table { font-size: 0.95em; line-height: 1.3; width: 100%; }
+  section.anatomy table td, section.anatomy table th { padding: 0.35em 0.6em; }
   section.strip pre { font-size: 15.5px; line-height: 1.28; padding: 12px 16px; }
   section.brief pre { font-size: 14.5px; line-height: 1.3; padding: 12px 14px; }
   section.brief table { font-size: 0.8em; }
@@ -170,58 +177,124 @@ This is the whole shape. A room is one project. One controller pi per room — I
 -->
 
 ---
-
-<!-- _class: invert small brief -->
+<!-- _class: invert briefwide -->
 
 # A brief is a contract: exact inputs in, a checked result out
 
-<p class="take">The worker gets the <em>why</em>, exact inputs, the room's lessons verbatim, and the checks its result must pass.</p>
+<p class="take">A real brief from graph-search — <code>005-graph-walk-operator.md</code>, abridged in its own words.</p>
 
-<div class="cols">
+<div class="cols brief2">
 <div>
 
-**An example brief** — graph-search's `005-graph-walk-operator.md`, condensed to one screen (the brief that produced the engine-native operator):
-
 ```text
-# 005 — a Java graph_walk operator inside index-serving
+# 005 — The first index-serving change: a Java graph_walk
+#       operator (+ customData explanations), proven on the local stack
 host: dev002
-## Objective    003 showed the walk works with no engine change …
-                005 makes the first, deliberately small, engine change
-## Inputs       design/003 §2 §4 §6 · results/004 "What to do next" (1)
-                index-serving @ main dc40053a1f (do not move)
-                live: graph_product/v_0_4 (1,046,870) · graph_edge/v_0_3
-## Constraints  L004 pin-shared-checkouts — branch off dc40053a1f
-                L005 human-only-prerequisites — Cloudsmith creds: BLOCKED
-                Java ≤ ~400 lines · time-box 8 h · partial result per phase
-## Deliverables branch + diff + PR-style README · design · side-by-sides
-                results/005-graph-walk-operator.md ≤ 12 bullets, "DONE 005"
-## Acceptance   cr_has_section "$RESULT" "## Metrics"
-                cr_has_sentinel "$RESULT" 005
-                test -f "$ROOT/patches/005-graph-walk.diff"
-writes:         src/graph_vantage/**, results/005*
-```
 
-**What came back** (landed 11-09): the Java `graph_walk` operator — brand-path lift **42 → 63 %**, **13/13 tests**.
+## Objective
+003 showed the walk works from a user Scripty with no engine change —
+but with three engine gaps: the hop is a shard fan-out over a graph_edge
+collection with the edge payload parsed out of the doc *key*;
+explanations cannot reach SearchResult.customData; 2-round frontiers hit
+the 999-result cap and the Python glue is ~250 lines. 005 makes the
+first, deliberately small, index-serving change: a Java @ScriptyOperator
+graph_walk (typed frontier, truncation per round, one RPC per hop when
+an entity index is available) and a result operator that stamps `why`
+into customData. Built, run and measured on the local stack on dev002,
+against the 1 M product / 2 M edge collections from 004, so that when we
+propose it to Jonathan's team it comes with a working prototype and
+numbers.
+
+## Inputs
+- docs/design/003-graph-in-vantage.md §2 (apply findings), §4 (graph_walk_v1
+  algorithm + request contract), §6 (what the operator must look like,
+  per scripty/operators/AGENTS.md: stage package, @ScriptyOptions record,
+  seam not raw client, typed return, registration, parity tests)
+- results/004-scale-real-data.md "What to do next" (1): agree one edge-key
+  encoding and make the hop read a forward field — 005 owns this decision
+- index-serving @ main dc40053a1f (do not move); patterns to copy:
+  CapnpScatterGatherOperator, LookupTermHashOperator, EntityLookupDownstream
+- live collections: graph_product/v_0_4 (1,046,870) · graph_node/v_0_2
+  (142,646) · graph_edge/v_0_3 (2,049,392); harness run_seeds.rs (50 seeds)
+```
 
 </div>
 <div>
 
-| part | what it gives the worker |
-|---|---|
-| `host:` | which machine runs it (laptop · `dev002` / `c4d`, two remote VMs) |
-| **Objective** | the *why*, and the prior results it builds on |
-| **Inputs** | exact paths, pinned shas, live collection names |
-| **Constraints** | the room's memory lines **quoted verbatim**; scope; time-box |
-| **Deliverables** | files, sizes, the `DONE NNN` sentinel |
-| **Acceptance** · `writes:` | shell checks + allowed paths — **enforced at `land`** since 11-17 |
+```text
+## Constraints
+- L004 pin-shared-checkouts — index-serving stays at dc40053a1f; all changes
+  on branch lanceriedel/graph-walk-operator, never pushed upstream
+- L005 human-only-prerequisites — Cloudsmith / dev credentials are Lance-only;
+  if the build needs them write "BLOCKED on <token>" and take the no-cred path
+- do not rewrite what works (keep graph_walk_v1 glue and the Rust harness);
+  new code in Rust — except inside index-serving, which is Java
+- Java change small and reviewable: ≤ ~400 lines across operator + options
+  record + result operator + tests + registration; no shard/proto changes
+- time-box 8 h wall clock; logs/graph-walk-operator.log START/END rc= per
+  step; partial result after every phase
 
-**At `land`:** `check` runs the Acceptance lines and the write-scope, then `judge` — a read-only pi that grades the result against the brief, quoting evidence → `ACCEPT` / `NOTES` / `REJECT`.
+## Phases
+0. Can we build and run a modified broker here? (≤ 2 h, gate for the rest)
+   (a) Gradle with the dev registry (b) layer a derived image (c) fallback
+1. Edge-key / forward-field decision (owned here) → graph_edge/v_0_4
+2. graph_walk operator (Java): options record, hop via the capnp seam,
+   truncation per round, restart mass α, typed GraphFrontier; unit tests
+3. Explanations into customData — prove with a response that carries `why`
+5. Measure: run_seeds gains shape G-walk-op; 50 seeds × scales; latency
+   p50/p95; identical frontiers on the 3 fixtures
+
+## Deliverables
+- branch + exported diff with a PR-style README · design doc 005
+- results/005-graph-walk-operator.md ≤ 12 bullets: build path go/no-go,
+  lines changed, metrics table G-walk vs G-walk-op, latency, "DONE 005"
+
+## Acceptance
+cr_has_section "$RESULT" "## Metrics" · cr_has_sentinel "$RESULT" 005
+test -f "$ROOT/src/graph_vantage/patches/005-graph-walk-operator.diff"
+writes: src/graph_vantage/**, docs/design/005*, docs/briefs/results/005*
+```
 
 </div>
 </div>
 
 <!--
-A real brief, not a toy: the one that got graph-search its first engine-native change. Read the shape, not the content. Objective says why and what it builds on. Inputs are exact — paths, a pinned sha, counts — because a worker that has to guess will guess wrong. Constraints start with the room's memory lines quoted verbatim, so the worker inherits what the room already learned. Since last week there is a seventh part: an Acceptance block and a writes line. Land refuses a result that fails them, then a cheap read-only judge grades it against the brief with quotes. This one came back with a lift from forty-two to sixty-three percent and thirteen passing tests.
+This is a real brief, abridged but in its own words — the one that got graph-search its first engine-native change. Read it
+as a shape. The Objective is a paragraph, not a sentence: it says what the previous brief found, what the three gaps are,
+exactly what this one changes, where it runs, and why — so the worker can make judgement calls. Inputs are exact: design
+sections, a pinned sha, the patterns to copy, live collection names with counts, the machine. Constraints open with the
+room's lessons quoted verbatim, then scope, then logging and a time-box. Phases turn a day of work into gates. Deliverables
+name files and the sentinel. Acceptance and writes: are what `land` enforces. The worker came back with an operator,
+numbers and tests, in eight hours on a VM.
+-->
+
+---
+<!-- _class: invert anatomy -->
+
+# What a brief gives the worker — and what the room gets back
+
+<p class="take">Seven parts, the same every time, so a worker never has to guess and the controller never has to trust.</p>
+
+| part | what it gives the worker |
+|---|---|
+| `host:` | which machine runs it (laptop · `dev002` / `c4d`, two remote VMs) |
+| **Objective** | the *why*, what the previous brief found, exactly what changes, where it runs |
+| **Inputs** | exact paths and sections, pinned shas, patterns to copy, live collection names with counts |
+| **Constraints** | the room's memory lines **quoted verbatim**; scope limits; logging; a time-box |
+| **Phases** | gates in order — the first one decides whether the rest is possible |
+| **Deliverables** | files, sizes, the `DONE NNN` sentinel |
+| **Acceptance** · `writes:` | shell checks + allowed paths — **enforced at `land`** since 11-17 |
+
+**What came back** (landed 11-09): the Java `graph_walk` operator — 2-round brand-path lift **42 → 63 %**, 17 / 24 ms p50/p95, **+1,054 lines** on a branch, **13/13 tests**.
+
+**At `land`:** `check` runs the Acceptance lines and the write-scope, then `judge` — a read-only pi that grades the result against the brief, quoting evidence → `ACCEPT` / `NOTES` / `REJECT`.
+
+<!--
+The anatomy, now that you have seen one. Three parts carry most of the weight: Inputs that are exact enough that the worker
+never guesses; Constraints that start with what the room has already learned, quoted so the lesson arrives intact; and the
+Acceptance block, which is the part the harness can check without a model. Then the gate: `check` is grep-level and
+deterministic, `judge` is a cheap read-only model pass that quotes the result back against each requirement. The result for
+005 was an operator, numbers and tests in eight hours on a VM.
 -->
 
 ---
