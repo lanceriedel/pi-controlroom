@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-24 11:30 — Portfolio doc: repo/commits column added; kumo-research redirected by Lance (Phase 2: GNN/relational framework for catalog-quality problems, categorization first) — doc updated, kumo-controller told to un-pause and write the first Phase-2 brief.
 - 11-24 08:01 — Round A047 #1 (Tue): room empty, clean, tick ok. Eight controllers alive now (new: controller-w7 product-knowledge, curated-controller wM). Waiting on Lance: pi-host inputs (017); Tobi-workstations bullet on slide 18.
 - 11-23 15:36 — Round A044 #1: room empty (020/021 landed; talk deck in Slides). upi-clustering page checked: current — no launch/land since 11-13, so nothing to republish. Round back to daily.
 - 11-23 13:55 — Talk deck → Google Slides https://docs.google.com/presentation/d/1cA6Zcc8aOezlUhsgetYiH3rBTEFIg6JtTDhEkJuF5ts/edit (image slides from PPTX) + notes Doc https://docs.google.com/document/d/1LT5vDU7JGpN3bMNWN0vAjNDFfZHapS-JjrvVlpw19L0/edit, My Drive/lancedocs/talks. Edit path: deck.md → re-export.
