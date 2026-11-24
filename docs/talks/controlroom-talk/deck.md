@@ -164,22 +164,28 @@ one pane, one job.
 -->
 
 ---
-
 <!-- _class: invert -->
 
-# Chat was the memory, and chat does not survive
+# Why I built it: a chat window does not scale to many agents
 
-<p class="take"><b>September:</b> one project, ~15 worker agents in Herdr tabs, and the plan lived in one controller's chat. Every failure came from that.</p>
+<p class="take">With ~15 agents on one project, I was the scheduler and the chat was the memory. Four things kept breaking.</p>
 
-- **Compaction, a crash, sleep, a new session** — each lost *why* we decided, what bit us, what was in flight
-- the files that *did* survive (`STATUS.md`, `results/`, the log) were **never read back** by a fresh controller
-- `nohup` watcher loops **died with Herdr**; a worker sat **26 h** at 98 % CPU while the strip said `working`
-- sleep killed pipelines mid-write; "what happened overnight?" had no answer
+| what broke | what the control room does instead |
+|---|---|
+| **The plan lived in one chat** — compaction, a crash or a new session lost it | the plan is files: a board, briefs, results, a memory of decisions and lessons — any agent re-reads them |
+| **Nothing watched the workers** — one sat 26 h at 98 % CPU "working" | a 60-second tick watches every pane: `done`, `blocked`, `stuck?` |
+| **I was the scheduler** — follow-ups happened when I remembered | the controller schedules its own rounds and wakes |
+| **Closing the laptop stopped everything** | long work runs on a VM room; the laptop room hands off and picks up |
 
-<span class="dim">Rules that fell out: files first · the human closes the loop · verifiable, not vibes · cheap to run, cheap to leave.</span>
+<p class="take" style="margin-top:14px">Rules that fell out: <b>files first</b> · <b>the human closes the loop</b> · <b>verifiable, not vibes</b> · <b>cheap to run, cheap to leave</b>.</p>
 
 <!--
-Here is September. One research project, about fifteen worker agents in Herdr tabs, and the plan lived in the controller's chat. Every failure came from that one fact. Compaction, a crash, sleep or a new session lost the reasoning — why we decided, what bit us, what was in flight. The files that did survive were never read back by a fresh session, so they might as well not have existed. The watchers were nohup loops that died with Herdr. The one that stung: a worker sat twenty-six hours at ninety-eight percent CPU while the strip said working. Sleep killed pipelines mid-write. The rules that fell out are the rest of this talk.
+Why build anything. In September I had about fifteen agents on one data project, each in a Herdr tab, and the plan lived in
+one controller's chat. Four things kept breaking. The plan itself: a compaction, a crash or a new session and the why was
+gone. Nobody watched the workers: one sat for 26 hours at 98 % CPU while the status said "working". I was the scheduler,
+so follow-ups happened when I remembered. And closing the laptop stopped everything. Each of those became a design rule:
+files first, a tick that watches, a controller that schedules itself, and a second room on a VM. The rest of the talk is
+those four fixes.
 -->
 
 ---

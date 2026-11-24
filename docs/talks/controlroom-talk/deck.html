@@ -465,15 +465,35 @@ section.tiny table { font-size: 0.95em; }
 .bets .box b { font-size: 19px; margin-bottom: 8px; }
 footer { font-size: 14px; color: #6b7480; }
 ;" data-marpit-pagination-total="23" data-size="16:9">
-<h1 id="chat-was-the-memory-and-chat-does-not-survive">Chat was the memory, and chat does not survive</h1>
-<p class="take"><b>September:</b> one project, ~15 worker agents in Herdr tabs, and the plan lived in one controller's chat. Every failure came from that.</p>
-<ul>
-<li><strong>Compaction, a crash, sleep, a new session</strong> — each lost <em>why</em> we decided, what bit us, what was in flight</li>
-<li>the files that <em>did</em> survive (<code>STATUS.md</code>, <code>results/</code>, the log) were <strong>never read back</strong> by a fresh controller</li>
-<li><code>nohup</code> watcher loops <strong>died with Herdr</strong>; a worker sat <strong>26 h</strong> at 98 % CPU while the strip said <code>working</code></li>
-<li>sleep killed pipelines mid-write; &quot;what happened overnight?&quot; had no answer</li>
-</ul>
-<p><span class="dim">Rules that fell out: files first · the human closes the loop · verifiable, not vibes · cheap to run, cheap to leave.</span></p>
+<h1 id="why-i-built-it-a-chat-window-does-not-scale-to-many-agents">Why I built it: a chat window does not scale to many agents</h1>
+<p class="take">With ~15 agents on one project, I was the scheduler and the chat was the memory. Four things kept breaking.</p>
+<table>
+<thead>
+<tr>
+<th>what broke</th>
+<th>what the control room does instead</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>The plan lived in one chat</strong> — compaction, a crash or a new session lost it</td>
+<td>the plan is files: a board, briefs, results, a memory of decisions and lessons — any agent re-reads them</td>
+</tr>
+<tr>
+<td><strong>Nothing watched the workers</strong> — one sat 26 h at 98 % CPU &quot;working&quot;</td>
+<td>a 60-second tick watches every pane: <code>done</code>, <code>blocked</code>, <code>stuck?</code></td>
+</tr>
+<tr>
+<td><strong>I was the scheduler</strong> — follow-ups happened when I remembered</td>
+<td>the controller schedules its own rounds and wakes</td>
+</tr>
+<tr>
+<td><strong>Closing the laptop stopped everything</strong></td>
+<td>long work runs on a VM room; the laptop room hands off and picks up</td>
+</tr>
+</tbody>
+</table>
+<p class="take" style="margin-top:14px">Rules that fell out: <b>files first</b> · <b>the human closes the loop</b> · <b>verifiable, not vibes</b> · <b>cheap to run, cheap to leave</b>.</p>
 <footer>Running a control room · Lance Riedel · Nov 2026 · internal</footer>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="5" data-class="invert small" data-paginate="true" data-footer="Running a control room · Lance Riedel · Nov 2026 · internal" data-theme="gaia" data-style="section { font-size: 24px; padding: 48px 56px; }
@@ -3089,7 +3109,12 @@ tabs and panes, and the same commands against a remote machine over SSH. Agent s
 is working, idle, done or blocked, without anyone scraping a screen — that is what the strip and the watchers are built on.
 And four verbs: list, prompt, read, focus — that is the whole API the controller needs to launch a worker, steer it, read its
 output and jump to it. Labels are API too, which is how the primary room gets its star. The rule under all of it: one pi,
-one pane, one job.</p></div><div class="bespoke-marp-note" data-index="3" tabindex="0"><p>Here is September. One research project, about fifteen worker agents in Herdr tabs, and the plan lived in the controller's chat. Every failure came from that one fact. Compaction, a crash, sleep or a new session lost the reasoning — why we decided, what bit us, what was in flight. The files that did survive were never read back by a fresh session, so they might as well not have existed. The watchers were nohup loops that died with Herdr. The one that stung: a worker sat twenty-six hours at ninety-eight percent CPU while the strip said working. Sleep killed pipelines mid-write. The rules that fell out are the rest of this talk.</p></div><div class="bespoke-marp-note" data-index="4" tabindex="0"><p>This is the whole shape. A room is one project. One controller pi per room — I talk to it, it writes briefs, launches workers in their own tabs, and integrates what comes back; it never does long work itself. Six kinds of file. A brief is a work order; the result is its answer. The board is the one shared truth: who is on what, what has landed — finished and integrated — and what waits on me. Memory is decisions and lessons, one sourced line each. The tick is a sixty-second reconciler under launchd. Automations is the ledger it fires; the standing one is the two-hour round. Twenty-three hundred lines of bash and Python, no server.</p></div><div class="bespoke-marp-note" data-index="5" tabindex="0"><p>This is a real brief, abridged but in its own words — the one that got graph-search its first engine-native change. Read it
+one pane, one job.</p></div><div class="bespoke-marp-note" data-index="3" tabindex="0"><p>Why build anything. In September I had about fifteen agents on one data project, each in a Herdr tab, and the plan lived in
+one controller's chat. Four things kept breaking. The plan itself: a compaction, a crash or a new session and the why was
+gone. Nobody watched the workers: one sat for 26 hours at 98 % CPU while the status said &quot;working&quot;. I was the scheduler,
+so follow-ups happened when I remembered. And closing the laptop stopped everything. Each of those became a design rule:
+files first, a tick that watches, a controller that schedules itself, and a second room on a VM. The rest of the talk is
+those four fixes.</p></div><div class="bespoke-marp-note" data-index="4" tabindex="0"><p>This is the whole shape. A room is one project. One controller pi per room — I talk to it, it writes briefs, launches workers in their own tabs, and integrates what comes back; it never does long work itself. Six kinds of file. A brief is a work order; the result is its answer. The board is the one shared truth: who is on what, what has landed — finished and integrated — and what waits on me. Memory is decisions and lessons, one sourced line each. The tick is a sixty-second reconciler under launchd. Automations is the ledger it fires; the standing one is the two-hour round. Twenty-three hundred lines of bash and Python, no server.</p></div><div class="bespoke-marp-note" data-index="5" tabindex="0"><p>This is a real brief, abridged but in its own words — the one that got graph-search its first engine-native change. Read it
 as a shape. The Objective is a paragraph, not a sentence: it says what the previous brief found, what the three gaps are,
 exactly what this one changes, where it runs, and why — so the worker can make judgement calls. Inputs are exact: design
 sections, a pinned sha, the patterns to copy, live collection names with counts, the machine. Constraints open with the
