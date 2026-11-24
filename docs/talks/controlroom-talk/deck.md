@@ -23,6 +23,10 @@ style: |
   section.anatomy table { font-size: 0.95em; line-height: 1.3; width: 100%; }
   section.anatomy table td, section.anatomy table th { padding: 0.35em 0.6em; }
   section.strip pre.stripc { color:#f2f2f2; font-size: 14.2px; line-height: 1.26; white-space: pre; overflow: hidden; }
+  section.memory .memline { background:#0b0d12; border:1px solid #3a4250; border-radius:6px; padding:7px 11px; margin:6px 0 8px; font-size:0.85em; line-height:1.3; }
+  section.memory .memline .src { color:#9aa4b2; font-size:0.9em; }
+  section.memory table { font-size:0.85em; }
+  section.memory .cols { grid-template-columns: 1.05fr 1fr; gap: 24px; }
   section.strip pre { font-size: 15.5px; line-height: 1.28; padding: 12px 16px; }
   section.brief pre { font-size: 14.5px; line-height: 1.3; padding: 12px 14px; }
   section.brief table { font-size: 0.8em; }
@@ -428,35 +432,52 @@ The legend, because you will see this strip again. Left, the lines: the header t
 -->
 
 ---
+<!-- _class: invert small memory -->
 
-<!-- _class: invert small -->
+# Memory: what the room has learned, kept outside any agent's head
 
-# Memory is two files, and no line gets in without a source
+<p class="take">Agents forget — context compacts, sessions end. The room keeps two short lists that every new agent reads first.</p>
 
-<p class="take">Decisions and lessons, one line each, append-only, bounded — budget 40 / 30, today 30 · 30. Grammar: <code>- D### date **slug** — one-liner ← source</code>. No source, no line; the CLI refuses.</p>
+<div class="cols">
+<div>
 
-```text
-- D015 2026-10-27 **controller-by-pane-id** — controller pane id pinned in logs/.controller by
-       init/tick-install; automations resolve the controller by pane id, name is a label
-       ← docs/briefs/results/006-wake-automations.md:logs/.controller
-- D031 2026-11-17 **briefs-are-contracts** — briefs are contracts: writes: globs + ## Acceptance sh block;
-       land runs check and refuses failing rows; --force must say why in the one-liner
-       ← docs/briefs/results/018-acceptance-checks.md:"land refuses failing rows"
-- L005 2026-10-27 **timebox-local-compute** — a worker sat 26 h on one unbounded call at 98 % CPU while
-       the strip said `working` — briefs must time-box compute and demand partial outputs
-       ← skills/controlroom/SKILL.md:"blocked 26 h"
-- L028 2026-10-27 **mechanism-needs-log-line** — a lesson asserting a mechanism needs a log line from that
-       mechanism (ext-error/compaction with source tag), not a pane glance — L023 was wrong
-       ← docs/briefs/results/009-durability-tests.md:needs a log line from that mechanism
-```
+**Two lists, one line each**
 
-- **Into briefs:** the controller pastes the lines that apply into every brief's Constraints, verbatim
-- **Dream** (`controlroom dream`): a worker *proposes* new lines; `--check` greps every citation; a person promotes — nothing lands by itself
-- **Flush at 75 % context:** the extension asks the controller to write down what is missing, then compacts
-- **Boot** — a fresh controller reads board → memory → log → automations → agents → unread results, then arms its round wake
+- **Decisions** — choices we made and why (budget: 40)
+- **Lessons** — things that bit us and the fix (budget: 30)
+
+**Two real lines**
+
+<div class="memline"><b>L005 · timebox-local-compute</b><br>a worker sat 26 h on one unbounded call at 98 % CPU while the strip said <code>working</code> — briefs must time-box compute and demand partial outputs<br><span class="src">source: skills/controlroom/SKILL.md</span></div>
+
+<div class="memline"><b>D031 · briefs-are-contracts</b><br>briefs carry <code>writes:</code> globs and an Acceptance block; <code>land</code> runs <code>check</code> and refuses failing rows<br><span class="src">source: results/018-acceptance-checks.md</span></div>
+
+</div>
+<div>
+
+**How it moves**
+
+| when | what happens |
+|---|---|
+| a worker **lands** | the controller records the decision or lesson, with its source |
+| a **brief** is written | the lines that apply are pasted in, verbatim — the worker inherits them |
+| a controller **boots** | it reads board → memory → log → automations before anything else |
+| context hits **75 %** | the extension asks the controller to write down what is missing, then compacts |
+| the lists get **long** | `dream` proposes merges with evidence; a person promotes or rejects — nothing lands by itself |
+
+**The one rule:** every line cites a file in the repo. No source, no line — the CLI refuses it.
+
+</div>
+</div>
 
 <!--
-Memory is two files, decisions and lessons, one line each, with a hard grammar: ID, date, slug, one-liner, source arrow. No source, no line — the CLI refuses to write it. Budget forty and thirty. These four lines are real. D015: the controller is a pane id, not a name, because names get lost on restart. L005 is the twenty-six-hour worker. L028 is a lesson about lessons: a claim about a mechanism needs a log line from that mechanism, because an earlier lesson turned out to be wrong. Briefs quote it verbatim. Dream only proposes; a person promotes. At seventy-five percent context the extension asks for a flush, then compacts. Boot is the fixed read order that makes it survivable.
+Memory. Agents forget — context compacts, sessions end — so the room keeps what it has learned outside any one agent's head:
+two short lists, decisions and lessons, one line each, with a budget so they stay readable. Two real ones: the worker that
+sat 26 hours at 98 % CPU while the status said working — that became the rule that every brief time-boxes compute and
+demands partial output. And the decision that briefs are contracts. The one rule that makes this trustworthy: every line
+cites a file in the repo, and the tool refuses a line without one. Then the lifecycle: recorded at land, pasted into the
+next brief, read first at boot, flushed before compaction, and consolidated by a dream step that only proposes — a person
+promotes.
 -->
 
 ---
