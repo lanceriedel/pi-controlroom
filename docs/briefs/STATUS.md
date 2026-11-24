@@ -4,6 +4,7 @@
 ## Workers
 | pane | agent | brief | state | result |
 |---|---|---|---|---|
+| wC:pW | portfolio-doc | 022-portfolio-doc | working | — |
 
 ## Notes
 - 11-24 08:01 — Round A047 #1 (Tue): room empty, clean, tick ok. Eight controllers alive now (new: controller-w7 product-knowledge, curated-controller wM). Waiting on Lance: pi-host inputs (017); Tobi-workstations bullet on slide 18.

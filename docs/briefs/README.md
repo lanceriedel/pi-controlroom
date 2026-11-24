@@ -10,6 +10,7 @@ Newest first; the last 8 are shown, older briefs are folded below.
 
 | Brief | Stream | Needs external resources? |
 |---|---|---|
+| [022-portfolio-doc](022-portfolio-doc.md) | Exec-level portfolio of all ten control-room projects: table + per-project what/why/status/demos/results/learnings/next | reads nine local repos |
 | [021-talk-edit](021-talk-edit.md) | Presentation editor pass: one idea per slide, takeaway lines, rewrite lancedocs/verification/Torrent/costs/future slides, rebuild | npx marp-cli |
 | [020-talk-deck](020-talk-deck.md) | Lance's ~25-min talk for ~50 engineers: 18 Marp slides + speaker notes, real captures, sources per number | npx marp-cli |
 | [019-judge](019-judge.md) | LLM completion gate at land: grade result vs brief with quoted evidence; `must:` requirements block; after 018 | pi -p (cheap model) |
