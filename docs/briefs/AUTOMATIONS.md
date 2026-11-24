@@ -39,6 +39,6 @@ Kinds: `watch <agent>` (worker finished/blocked/stuck) · `play` (end a pause) �
 | A045 | watch talk-edit | fired | — | — | 1 | no | integrate 021-talk-edit when DONE | launch 11-23 14:25 |
 | A046 | watch-path docs/briefs/results/021-talk-edit.md | cancelled | — | on-change | 2 | yes | 021 result changed: if it contains DONE 021, land it and re-upload deck.pptx to the Slides file (id 1cA6Zcc8aOezlUhsgetYiH3rBTEFIg6JtTDhEkJuF5ts) via Drive PATCH as before | watch-path 11-23 14:25 · cancelled 11-23 14:52 |
 | A047 | wake | cancelled | 2026-11-25 08:00 | weekdays 08:00 | 1 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; daily while the room is idle — re-arm the 2h round when work is launched | wake 11-23 15:35 · cancelled 11-24 10:58 |
-| A048 | watch portfolio-doc | armed | — | — | 0 | no | integrate 022-portfolio-doc when DONE | launch 11-24 10:58 |
+| A048 | watch portfolio-doc | fired | — | — | 1 | no | integrate 022-portfolio-doc when DONE | launch 11-24 10:58 |
 | A049 | wake | armed | 2026-11-24 12:58 | every 2h | 0 | yes | round: integrate DONE workers, controlroom land, update STATUS.md; this wake repeats every 2h | wake 11-24 10:58 |
-| A050 | watch-path docs/briefs/results/022-portfolio-doc.md | armed | — | on-change | 0 | yes | 022 result changed: if it contains DONE 022, land it and tell Lance where docs/portfolio-2026-11.md is | watch-path 11-24 10:58 |
+| A050 | watch-path docs/briefs/results/022-portfolio-doc.md | cancelled | — | on-change | 1 | yes | 022 result changed: if it contains DONE 022, land it and tell Lance where docs/portfolio-2026-11.md is | watch-path 11-24 10:58 · cancelled 11-24 11:11 |
