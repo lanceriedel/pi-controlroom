@@ -22,6 +22,7 @@ style: |
   section.briefwide .take { margin-bottom: 6px; }
   section.anatomy table { font-size: 0.95em; line-height: 1.3; width: 100%; }
   section.anatomy table td, section.anatomy table th { padding: 0.35em 0.6em; }
+  section.strip pre.stripc { color:#f2f2f2; font-size: 14.2px; line-height: 1.26; white-space: pre; overflow: hidden; }
   section.strip pre { font-size: 15.5px; line-height: 1.28; padding: 12px 16px; }
   section.brief pre { font-size: 14.5px; line-height: 1.3; padding: 12px 14px; }
   section.brief table { font-size: 0.8em; }
@@ -361,31 +362,29 @@ deterministic, `judge` is a cheap read-only model pass that quotes the result ba
 
 <p class="take">Who is working, who is done, and — in red — who needs me. <b>Illustrative composite</b> of a graph-search afternoon: real names, states and layout from the 11-17 logs; times combined into one picture.</p>
 
-```text
- CONTROL ROOM  Mon 16:42  graph-search   (say "ok" in CONTROLLER to integrate · blocked = needs you)   tick ok 16:42:07
+<pre class="stripc"><span style="color:#f2f2f2;font-weight:700"> CONTROL ROOM  Mon 16:42  graph-search</span>   (say &quot;ok&quot; in CONTROLLER to integrate · <span style="color:#ff7b72;font-weight:700">blocked</span> = needs you)   <span style="color:#9aa4b2">tick ok 16:42</span>
    next A089 18:31
- ROOMS  local ▶gs-controller ⇄ dev002 ▶gs-remote ‹PRIMARY› ⇄ c4d ▶gs-c4d · MODE: remote · sync: 4c3f929f · ahead 0 · behind 0
+ ROOMS  local ▶gs-controller ⇄ dev002 ▶gs-remote <span style="color:#79c0ff;font-weight:700">‹PRIMARY›</span> ⇄ c4d ▶gs-c4d · <span style="color:#79c0ff;font-weight:700">MODE: remote</span>
  AGENTS  (detail on — Ctrl+B D to toggle)  ▶ = controller
- ▌ LOCAL · Lances-MacBook-Pro · 3 agents ──────────────────────────────────────────────────────────────────────────
-   ▶ idle     gs-controller      wD:p1   standby            last write 4m  · ctx 31%
-   │ working  gs-images          wD:pC   023-images-cards   last write 1m  · ctx 44%
-   │ blocked  gs-proof-eval      wD:pF   039-cross-track C  last write 12m · ctx 61%   NEEDS YOU: judge cache lease?
- ▌ DEV002 · reachable · 6 agents ──────────────────────────────────────────────────────────────────────────────────
-   ▶ idle     gs-remote          w2:pM   ‹PRIMARY›          last write 2m  · ctx 18%
-   │ working  gs-fix             w2:pC   014-fixes-iterate  last write 0m  · ctx 52%
-   │ working  gs-scale7m         w2:p9   007-scale-7m       last write 23m · ctx 37%   stuck?
-   │ done     gs-judge           w2:p5   010-seed-free      last write 1.1h · ctx 29%  ✓ acceptance · ⚖ ACCEPT
-   │ done     gs-graph           w2:p4   003-graph-in-vantage  last write 2.3h          ✓ acceptance
-   │ idle     gs-vantage         w2:p3   —                  last write 6.0h
- ▌ C4D · reachable · 5 agents ─────────────────────────────────────────────────────────────────────────────────────
-   ▶ idle     gs-c4d             w1:p3   standby            last write 9m
-   │ working  gs-widen           w1:p6   015-widen-eval     last write 0m  · ctx 48%
-   │ working  gs-haystack        w1:p7   016-haystack-c4d   last write 3m  · ctx 71%
-   │ working  gs-dense           w1:p9   039-native-prf     last write 1m  · ctx 55%
-   │ done     gs-publish         w1:p4   006-publish-status last write 1.2d          ✓ acceptance · ⚖ NOTES
+ <span style="color:#79c0ff;font-weight:700">▌ LOCAL · Lances-MacBook-Pro · 3 agents</span> <span style="color:#9aa4b2">──────────────────────────────────────────────────────────────────────────</span>
+<span style="color:#9aa4b2">   ▶</span> <span style="color:#7ee787">idle</span>     gs-controller      wD:p1   <span style="color:#9aa4b2">standby</span>            last write 4m  · ctx 31%
+<span style="color:#9aa4b2">   │</span> <span style="color:#f2c744">working</span>  gs-images          wD:pC   023-images-cards   last write 1m  · ctx 44%
+<span style="color:#9aa4b2">   │</span> <span style="color:#ff7b72;font-weight:700">blocked</span>  gs-proof-eval      wD:pF   039-cross-track C  last write 12m · ctx 61%   <span style="color:#ff7b72;font-weight:700">NEEDS YOU: judge cache?</span>
+ <span style="color:#7ee787;font-weight:700">▌ DEV002 · reachable · 6 agents</span> <span style="color:#9aa4b2">──────────────────────────────────────────────────────────────────────────────────</span>
+<span style="color:#9aa4b2">   ▶</span> <span style="color:#7ee787">idle</span>     gs-remote          w2:pM   <span style="color:#79c0ff;font-weight:700">‹PRIMARY›</span>          last write 2m  · ctx 18%
+<span style="color:#9aa4b2">   │</span> <span style="color:#f2c744">working</span>  gs-fix             w2:pC   014-fixes-iterate  last write 0m  · ctx 52%
+<span style="color:#9aa4b2">   │</span> <span style="color:#f2c744">working</span>  gs-scale7m         w2:p9   007-scale-7m       last write 23m · ctx 37%   <span style="color:#ff7b72;font-weight:700">stuck?</span>
+<span style="color:#9aa4b2">   │</span> <span style="color:#7ee787;font-weight:700">done</span>     gs-judge           w2:p5   010-seed-free      last write 1.1h · ctx 29%  <span style="color:#7ee787">✓ acceptance</span> · <span style="color:#7ee787">⚖ ACCEPT</span>
+<span style="color:#9aa4b2">   │</span> <span style="color:#7ee787;font-weight:700">done</span>     gs-graph           w2:p4   003-graph-in-vantage  last write 2.3h          <span style="color:#7ee787">✓ acceptance</span>
+<span style="color:#9aa4b2">   │</span> <span style="color:#7ee787">idle</span>     gs-vantage         w2:p3   —                  last write 6.0h
+ <span style="color:#7ee787;font-weight:700">▌ C4D · reachable · 5 agents</span> <span style="color:#9aa4b2">─────────────────────────────────────────────────────────────────────────────────────</span>
+<span style="color:#9aa4b2">   ▶</span> <span style="color:#7ee787">idle</span>     gs-c4d             w1:p3   <span style="color:#9aa4b2">standby</span>            last write 9m
+<span style="color:#9aa4b2">   │</span> <span style="color:#f2c744">working</span>  gs-widen           w1:p6   015-widen-eval     last write 0m  · ctx 48%
+<span style="color:#9aa4b2">   │</span> <span style="color:#f2c744">working</span>  gs-haystack        w1:p7   016-haystack-c4d   last write 3m  · <span style="color:#f2c744">ctx 71%</span>
+<span style="color:#9aa4b2">   │</span> <span style="color:#f2c744">working</span>  gs-dense           w1:p9   039-native-prf     last write 1m  · ctx 55%
+<span style="color:#9aa4b2">   │</span> <span style="color:#7ee787;font-weight:700">done</span>     gs-publish         w1:p4   006-publish-status last write 1.2d          <span style="color:#7ee787">✓ acceptance</span> · <span style="color:#f2c744">⚖ NOTES</span>
  TICK  last 16:42:07 · 2 actions          MEMORY  74 decisions · 162 lessons · 0 proposed · last dream never
- AUTOMATIONS  5 armed · next A089 18:31 (in 1.8h) · fired today 9
-```
+ AUTOMATIONS  5 armed · next A089 18:31 (in 1.8h) · fired today 9</pre>
 
 <!--
 The board is STATUS.md; the strip is the board plus live state, refreshed every fifteen seconds under the controller. This one is an illustrative composite of a graph-search afternoon — names, states and layout are real, from the November seventeenth logs; I combined the times into one picture. Top down: the header says the tick is alive and when the next wake is. ROOMS shows one controller per host and which is primary. AGENTS is grouped by host; detail mode adds last write, context and the acceptance and judge chips. Three states on screen: working, done, and one red blocked row with a question for me. Red means a human is needed; everything else the controller handles.
@@ -415,11 +414,11 @@ The board is STATUS.md; the strip is the board plus live state, refreshed every 
 
 | colour | state | meaning |
 |---|---|---|
-| yellow | `working` | busy |
-| green | `idle` / `done` | results probably on disk |
-| **red** | `blocked` | **the only state that needs a human** |
-| **red** | `stuck?` | working, no write 20 min, session quiet 10 min |
-| yellow | `spinning?` | burning tokens, nothing written 30 min |
+| yellow | <code style="color:#f2c744;background:#0b0d12">working</code> | busy |
+| green | <code style="color:#7ee787;background:#0b0d12">idle</code> / <code style="color:#7ee787;background:#0b0d12;font-weight:700">done</code> | results probably on disk |
+| **red** | <code style="color:#ff7b72;background:#0b0d12;font-weight:700">blocked</code> | **the only state that needs a human** |
+| **red** | <code style="color:#ff7b72;background:#0b0d12;font-weight:700">stuck?</code> | working, no write 20 min, session quiet 10 min |
+| yellow | <code style="color:#f2c744;background:#0b0d12">spinning?</code> | burning tokens, nothing written 30 min |
 
 </div>
 </div>
