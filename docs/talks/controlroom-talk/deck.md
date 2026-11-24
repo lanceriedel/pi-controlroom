@@ -71,34 +71,70 @@ This talk is about how I actually work: one AI controller per project, a pile of
 -->
 
 ---
-
 <!-- _class: invert small -->
 
-# Two tools you already have: pi is the agent, Herdr owns the panes
+# pi: the agent — a session is a file, and everything is a hook
 
-<p class="take">Everything in this talk is built on one rule — one pi, one pane, one job — and four Herdr commands.</p>
+<p class="take">pi is Shopify's terminal coding agent (Mario Zechner's <code>pi</code>, wired to the Shopify AI proxy). Four properties make it a good building block for a control room.</p>
 
 <div class="cols">
 <div>
 
-**pi** — the agent
-- a coding agent; a session is a JSONL file on disk (`~/.pi/agent/sessions/`)
-- extensions (TypeScript hooks), skills, prompt templates
-- talks to models through the Shopify proxy
+**1 · Sessions are files.** Every turn is appended to a JSONL at `~/.pi/agent/sessions/…` — resumable (`pi --resume`), forkable, readable by other programs. The control room reads them for cost, context size, "did this prompt actually run?", and `stuck?`.
+
+**2 · Extensible in three cheap ways.**
+- **extensions** — TypeScript hooks on events (`session_start`, `turn_end`, `session_before_compact`); ours flushes memory at 75 % and compacts
+- **skills** — a `SKILL.md` the agent reads when the task matches; ours teaches `/controller`
+- **prompt templates** — `/controller`, `/dream`, `/judge` are Markdown files
 
 </div>
 <div>
 
-**Herdr** — the multiplexer
-- panes · tabs · workspaces, local **and** remote (`herdr --machine dev002 …`)
-- knows each pane's **agent state**: working / idle / done / blocked
-- `herdr agent list | prompt | read | focus`
+**3 · Scriptable.** `pi -p "<prompt>"` runs one non-interactive turn — the judge is just that, with a template. `codemode` lets a turn call many tools from one script; the Tool Gateway MCP gives it Slack, Vault, GitHub.
 
-</div>
-</div>
+**4 · Models are a flag.** `pi --model anthropic/claude-fable-5-1`; the Shopify proxy handles auth and metering. (Switching mid-session is the one thing *not* to do — hand off with a file.)
 
 ```text
-$ herdr agent list     # 68 agents on my laptop, 8 shown · one controller per room (= project) · 11-23
+~/.pi/agent/
+  sessions/<cwd>/<timestamp>.jsonl   # one agent's memory
+  extensions/  skills/  prompts/     # how you change it
+  settings.json                      # packages · default model
+```
+
+</div>
+</div>
+
+<!--
+pi first. It is the terminal coding agent most of you already run — Mario's pi, installed through the Shopify installer so
+it talks to the AI proxy with no keys to manage. Four things matter for what follows. Sessions are files on disk, so other
+programs — my tick — can read them: cost, context size, whether a prompt produced a turn, whether a worker has gone quiet.
+It is extensible three cheap ways: TypeScript extensions on lifecycle events, skills the agent reads on demand, and prompt
+templates — the whole control room is one extension, one skill, three templates. It is scriptable: `pi -p` is a single
+non-interactive turn, which is all the judge is. And the model is a flag, with one rule: never switch it mid-session.
+-->
+
+---
+<!-- _class: invert small -->
+
+# Herdr: the multiplexer — it owns the panes and knows what each agent is doing
+
+<p class="take">Herdr is a terminal multiplexer built for agents: workspaces → tabs → panes, on this machine and on others, with the state of every agent reported back.</p>
+
+<div class="cols">
+<div>
+
+**What it gives a control room**
+- **Placement**: a workspace per project, a tab per agent, a pane per job — on the laptop or `--machine dev002`
+- **Agent state** without parsing screens: `working · idle · done · blocked` for every pane (`herdr integration install pi`)
+- **Four verbs**: `herdr agent list | prompt | read | focus` — enough to launch, steer, inspect and jump to any agent
+- **Labels**: workspace and tab names are API — the tick writes `★` on the primary room
+- **Toasts & keys**: in-window notifications; `Ctrl+B D` toggles the strip's detail
+
+</div>
+<div>
+
+```text
+$ herdr agent list      # 11-23, 8 of 68 agents shown
 controller        idle     wC:p1   pi-controlroom
 talk-deck         working  wC:pT   pi-controlroom
 gs-controller     done     wD:p1   graph-search
@@ -107,10 +143,24 @@ kumo-controller   idle     wF:p1   kumo-research
 upi-controller    working  wG:p1   upi-clustering-research
 ti-controller     done     wH:p1   taste-id-research
 gsd-controller    done     wJ:p1   gsd-reviews
+
+$ herdr --machine dev002 agent list    # same verbs, other host
+gs-remote         idle     w2:pM   graph-search ★
+ti-remote         idle     w4:p1   taste-id-research
 ```
 
+**The rule everything else rests on:** one pi, one pane, one job — Herdr makes that cheap, and makes the state of all of them visible from one place.
+
+</div>
+</div>
+
 <!--
-Two tools, quickly, because everything else sits on them. pi is the agent: a session is a JSONL file on disk, it has extensions and skills, and it reaches models through the Shopify proxy. The rule I never break: one pi, one pane, one job. Herdr is the multiplexer that owns the panes — locally and on remote machines with the same CLI — and it knows the state of the agent in each pane: working, idle, done, blocked. Four commands matter: list, prompt, read, focus. The capture is my laptop as I built this deck: sixty-eight agents, eight shown, one controller per room — and a room is just one project's control room.
+Herdr is the multiplexer; if you have used tmux, it is that, built for agents. Three things I lean on. Placement: workspaces,
+tabs and panes, and the same commands against a remote machine over SSH. Agent state: Herdr knows whether each pane's agent
+is working, idle, done or blocked, without anyone scraping a screen — that is what the strip and the watchers are built on.
+And four verbs: list, prompt, read, focus — that is the whole API the controller needs to launch a worker, steer it, read its
+output and jump to it. Labels are API too, which is how the primary room gets its star. The rule under all of it: one pi,
+one pane, one job.
 -->
 
 ---
