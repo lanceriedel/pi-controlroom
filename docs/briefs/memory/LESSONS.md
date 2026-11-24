@@ -3,7 +3,7 @@
 - L001 2026-10-27 **no-timeout-binary** — no `timeout`/`gtimeout` on this Mac; wrap anything that can hang in `perl -e 'alarm N; exec @ARGV' --`; don't brew-install coreutils ← docs/briefs/results/001-mana-install.md#6-gotchas
 - L002 2026-10-27 **caffeinate-pipelines** — laptop sleep kills long jobs and workers' API calls mid-write; run pipelines under `caffeinate -i`, tell workers to save partials early ← README.md:"lost a step to this once"
 - L003 2026-10-27 **frontmatter-quote-colon** — a prompt-template frontmatter value containing `: ` breaks YAML and pi silently skips the template — quote it; `/reload` picks it up ← skills/controlroom/SKILL.md:"must be quoted"
-- L004 2026-10-27 **heredoc-eats-stdin** — piping JSON into `python3 - <<EOF` loses stdin to the heredoc — pass data via an env var (or argv) ← skills/controlroom/SKILL.md:"loses stdin"
+- ~~L004 2026-10-27 **heredoc-eats-stdin** — piping JSON into `python3 - <<EOF` loses stdin to the heredoc — pass data via an env var (or argv)~~ superseded-by L001 ← skills/controlroom/SKILL.md:"loses stdin"
 - L005 2026-10-27 **timebox-local-compute** — a worker sat 26 h on one unbounded call at 98 % CPU while the strip said `working` — briefs must time-box compute and demand partial outputs ← skills/controlroom/SKILL.md:"blocked 26 h"
 - ~~L006 2026-10-27 **hidden-subagents-die** — hidden pi subagents are killed after ~3 min without output — use Herdr panes for read-heavy tasks~~ superseded-by L021 ← README.md:"killed after ~3 minutes"
 - L007 2026-10-27 **toasts-unreliable** — Herdr toasts default to off and are transient; the strip and `logs/agents.log` are the reliable signals ← README.md:"default to *off*"
