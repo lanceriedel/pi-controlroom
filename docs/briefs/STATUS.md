@@ -6,6 +6,7 @@
 |---|---|---|---|---|
 
 ## Notes
+- 11-24 12:02 — flush at 75 %: D033 mode-switch-is-a-command, L049 wide-tables-lancedocs-not-gdoc; L042→L047. Next wake A049 12:58 (2h round; drop to daily if idle). Open for Lance: pi-host inputs (017); slide 18 Tobi-workstations words.
 - 11-24 11:30 — Portfolio doc: repo/commits column added; kumo-research redirected by Lance (Phase 2: GNN/relational framework for catalog-quality problems, categorization first) — doc updated, kumo-controller told to un-pause and write the first Phase-2 brief.
 - 11-24 08:01 — Round A047 #1 (Tue): room empty, clean, tick ok. Eight controllers alive now (new: controller-w7 product-knowledge, curated-controller wM). Waiting on Lance: pi-host inputs (017); Tobi-workstations bullet on slide 18.
 - 11-23 15:36 — Round A044 #1: room empty (020/021 landed; talk deck in Slides). upi-clustering page checked: current — no launch/land since 11-13, so nothing to republish. Round back to daily.
