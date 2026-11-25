@@ -12,6 +12,8 @@ PERIOD = 15.0        # regenerate at most this often
 ANSI = re.compile(r"\x1b\[([0-9;]*)m")
 OSC8 = re.compile(r"\x1b\]8;;([^\x1b]*)\x1b\\")   # (022.1) hyperlinks: curses cannot emit them — strip for display, resolve clicks ourselves (LINKS[row] = [(start,end,url)])
 LINKS = {}
+SELF_MTIME = os.path.getmtime(os.path.realpath(__file__))
+REEXEC = {"do": False}
 
 def delink(i, line):
     """strip OSC 8 from one output line, remembering [(start,end,url)] spans in the visible (ANSI-stripped) text."""
@@ -90,6 +92,7 @@ def main(stdscr):
             time.sleep(1)
             now = time.time()
             due = state["force"] or (now - state["last_gen"] >= PERIOD and now - state["last_input"] >= IDLE)
+            if os.path.getmtime(os.path.realpath(__file__)) != SELF_MTIME: state["reexec"] = state["quit"] = True; continue   # (022.2) the CLI was saved → re-exec so every room's strip picks up new rendering without a manual strip-restart
             if due:
                 lines = generate()
                 with lock:
@@ -147,7 +150,9 @@ def main(stdscr):
         elif ch == curses.KEY_RESIZE: state["force"] = True   # (015) re-pad group bars to the new width
         state["offset"] = max(0, state["offset"])
     print("\033[?1003l", end="", flush=True)
+    REEXEC["do"] = bool(state.get("reexec"))
 
 if __name__ == "__main__":
     try: curses.wrapper(main)
     except KeyboardInterrupt: pass
+    if REEXEC["do"]: os.execv(sys.executable, [sys.executable, os.path.realpath(__file__)] + sys.argv[1:])
