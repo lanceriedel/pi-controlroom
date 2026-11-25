@@ -1677,8 +1677,10 @@ except Exception: print("timeout")')
   strip-restart)   # controlroom strip-restart [--pane <id>] — restart the status pager in THIS workspace's `status` pane (015: two rooms on one server share the label; never touch the other room's strip)
     need_herdr; pane=$(strip_pane "$@")
     [ -z "$pane" ] && { echo "no pane labelled status in workspace ${WS:-?} (pass --pane <id>)"; exit 1; }
+    # (022.3) the pager runs in THIS repo ($ROOT) and only in THIS workspace's pane: `--pane` from another workspace is refused (L037 — one wrong `strip-restart --pane` from room A put room A's pager in nine other rooms). CR_STRIP_ANY_ROOM=1 overrides, still cd $ROOT (run it from the right repo).
+    if [ -n "$WS" ] && [ "${pane%%:*}" != "$WS" ] && [ "${CR_STRIP_ANY_ROOM:-0}" != 1 ]; then echo "refused: $pane is in workspace ${pane%%:*}, this room is $WS — run strip-restart from that room's repo"; exit 1; fi
     herdr pane send-keys "$pane" q >/dev/null 2>&1; sleep 0.5
-    herdr pane run "$pane" "clear; cd '$ROOT' && HERDR_WORKSPACE_ID=${pane%%:*} HERDR_PANE_ID=$pane controlroom statusbar" >/dev/null 2>&1 && echo "status pager restarted in $pane" ;;
+    herdr pane run "$pane" "clear; cd '$ROOT' && HERDR_WORKSPACE_ID=${pane%%:*} HERDR_PANE_ID=$pane controlroom statusbar" >/dev/null 2>&1 && echo "status pager restarted in $pane ($ROOT)" ;;
   strip-check)   # controlroom strip-check [--pane <id>] [--quiet] [--force] — is the pager alive in this workspace's `status` pane? If the pane shows a bare shell (Herdr restart), relaunch it. The tick calls this every pass.
     QUIET=0; FORCE=0; for a in "$@"; do case "$a" in --quiet) QUIET=1;; --force) FORCE=1;; esac; done
     [ "${HERDR_ENV:-}" = 1 ] || exit 0; pane=$(strip_pane "$@"); [ -z "$pane" ] && { [ "$QUIET" = 1 ] || echo "strip: no pane labelled status in workspace ${WS:-?}"; exit 0; }
