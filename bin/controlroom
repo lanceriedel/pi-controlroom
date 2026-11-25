@@ -1639,6 +1639,14 @@ print(next((p["pane_id"] for p in ps if (p.get("label") or "")=="status" and str
     NAME=$A1; BRIEF=$A2; LABEL=${A3:-"worker: $NAME"}
     [ -z "$NAME" ] || [ -z "$BRIEF" ] && { echo "usage: controlroom launch <name> docs/briefs/<NNN-slug>.md [tab label] [--force]"; exit 2; }
     [ -f "$PAUSED" ] && [ "$FORCE" = 0 ] && { echo "paused since $(sed -n 's/.*since=\([^ ]*\).*/\1/p' "$PAUSED") — controlroom play, or --force"; exit 3; }
+    [ -f "$BRIEF" ] || { echo "no such brief: $BRIEF"; exit 2; }
+    # (022.4) D031 enforced at the door, not just at land: a brief without `writes:` and `## Acceptance` is not a contract. Controllers that booted before 018 kept writing the old shape (graph-search 100–110) — the prompt is only read at session start; the CLI is read every time. --force launches anyway (noted on the board row).
+    miss=""; grep -q '^writes:' "$BRIEF" || miss="writes: <glob>[, <glob>…] line"; grep -q '^## Acceptance' "$BRIEF" || miss="${miss:+$miss and }## Acceptance \`\`\`sh block"
+    if [ -n "$miss" ]; then
+      if [ "$FORCE" = 1 ]; then echo "note: $BRIEF has no $miss (launched with --force; check/land will use default checks only)"; else
+        printf 'refused: %s has no %s — briefs are contracts (D031/018). Add:\n\n## Acceptance\n```sh\ncr_has_section "$RESULT" "## Deviations"\ncr_has_sentinel "$RESULT" %s\n# + one line per deliverable: test -f "$ROOT/<path>" · cr_grep <file> "<phrase>" · cr_max_lines <file> N\n```\nwrites: <globs the worker may touch>\n\nor --force to launch anyway.\n' "$BRIEF" "$miss" "$(basename "$BRIEF" | sed -n 's/^\([0-9]\{3\}\).*/\1/p')"; exit 4
+      fi
+    fi
     pane=$(herdr tab create --workspace "$WS" --cwd "$ROOT" --no-focus 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])'); sleep 3
     herdr tab rename "${pane/:p/:t}" "$LABEL" >/dev/null 2>&1
     herdr agent start "$NAME" --kind pi --pane "$pane" --timeout 60000 ${CONTROLROOM_LAUNCH_ARGS:+-- $CONTROLROOM_LAUNCH_ARGS} >/dev/null 2>&1 || { echo "agent start failed in $pane"; exit 1; }   # (019) CONTROLROOM_LAUNCH_ARGS="--model …" → extra pi args (judge --here)
