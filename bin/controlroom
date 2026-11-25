@@ -124,7 +124,8 @@ PY
     local nb; nb=$(ls "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -c -v -E 'README|STATUS|AUTOMATIONS')   # (014.1) newest first, last 6, "+N older"
     # (022.1) each brief is an OSC 8 hyperlink → GitHub blob URL (Ctrl-hover underlines, click opens); plain text when there is no https remote. Links to the pinned branch so they survive checkouts.
     local burl; burl=$(blob_url); printf ' BRIEFS   '
-    for b in $(ls -t "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -v -E 'README|STATUS|AUTOMATIONS' | head -6 | xargs -n1 basename 2>/dev/null | sed 's/\.md$//'); do
+    # (022.5) order = brief number, highest first (was mtime: an edited old brief jumped ahead of newer ones and read as mis-sorted); un-numbered briefs sort last
+    for b in $(ls "$ROOT"/docs/briefs/*.md 2>/dev/null | grep -v -E 'README|STATUS|AUTOMATIONS' | xargs -n1 basename 2>/dev/null | sed 's/\.md$//' | awk '{n=($0 ~ /^[0-9]+/)?substr($0,1,match($0,/[^0-9]/)-1):-1; print n"\t"$0}' | sort -t$'\t' -k1,1nr -k2,2r | cut -f2 | head -6); do
       if [ -n "$burl" ]; then printf '\033]8;;%s/docs/briefs/%s.md\033\\%s\033]8;;\033\\ ' "$burl" "$b" "$b"; else printf '%s ' "$b"; fi
     done; if [ "$nb" -gt 6 ]; then if [ -n "$burl" ]; then printf '· \033]8;;%s\033\\+%s older\033]8;;\033\\' "${burl%/blob/*}/tree/${burl##*/blob/}/docs/briefs" "$((nb-6))"; else printf '· +%s older' "$((nb-6))"; fi; fi; printf '\n'
   fi
